@@ -1,0 +1,14 @@
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Brainstorm visual companion sessions
+.superpowers/
+
+# PowerShell module test artifacts
+**/tests/snapshots/*.actual.txt
