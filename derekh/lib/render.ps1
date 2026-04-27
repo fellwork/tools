@@ -366,14 +366,16 @@ function Render-DhIssuesPane {
     .DESCRIPTION
         Layout rect: $Layout.IssuesPane = @{ X; Y; Width; Height }
         Each issue gets one row. Issues are color-coded by severity.
-        Phase G will add [1]-[9] numeric prefixes; F just lists them.
+        When -ShowIndices is set (Phase G interactive mode), issues 1-9 get
+        [N] accent-colored prefixes; issues 10+ get 4-space indent.
         Auto-scrolls to show the most recent issues when count exceeds max_visible.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$State,
         [Parameter(Mandatory)][hashtable]$Theme,
-        [Parameter(Mandatory)][hashtable]$Layout
+        [Parameter(Mandatory)][hashtable]$Layout,
+        [switch]$ShowIndices
     )
 
     $rect = $Layout.IssuesPane
@@ -408,13 +410,36 @@ function Render-DhIssuesPane {
             default   { $pal.dim }
         }
 
-        $prefix  = if ($gl.icon_alert -and $severity -ne 'info') { "$($gl.icon_alert) " } else { '  ' }
-        $msg     = "$prefix$($issue.Message)"
-        if ($msg.Length -gt $innerW) {
-            $msg = $msg.Substring(0, $innerW - 1) + '…'
-        }
+        $n = $i + 1  # 1-based index
 
-        Write-DhAt -X $innerX -Y $row -Text $msg -Color $color
+        if ($ShowIndices) {
+            if ($n -le 9) {
+                # Accent-colored [N] prefix (write separately for color control)
+                $indexText = "[$n] "
+                Write-DhAt -X $innerX -Y $row -Text $indexText -Color $pal.accent
+                $msgX = $innerX + $indexText.Length
+                $availW = $innerW - $indexText.Length
+                $msg = $issue.Message
+                if ($msg.Length -gt $availW) {
+                    $msg = $msg.Substring(0, $availW - 1) + '…'
+                }
+                Write-DhAt -X $msgX -Y $row -Text $msg -Color $color
+            } else {
+                # Issues 10+: 4-space indent, no hotkey
+                $msg = '    ' + $issue.Message
+                if ($msg.Length -gt $innerW) {
+                    $msg = $msg.Substring(0, $innerW - 1) + '…'
+                }
+                Write-DhAt -X $innerX -Y $row -Text $msg -Color $color
+            }
+        } else {
+            $prefix  = if ($gl.icon_alert -and $severity -ne 'info') { "$($gl.icon_alert) " } else { '  ' }
+            $msg     = "$prefix$($issue.Message)"
+            if ($msg.Length -gt $innerW) {
+                $msg = $msg.Substring(0, $innerW - 1) + '…'
+            }
+            Write-DhAt -X $innerX -Y $row -Text $msg -Color $color
+        }
     }
 }
 
@@ -486,4 +511,260 @@ function script:_Draw-DhBox {
     # Bottom border.
     $bottomBar = $h * ($Width - 2)
     Write-DhAt -X $X -Y ($Y + $Height - 1) -Text "${bl}${bottomBar}${br}" -Color $c
+}
+
+# ── Phase G: Resize handling ──────────────────────────────────────────────────
+
+function Write-DhCentered {
+    <#
+    .SYNOPSIS
+        Clear the screen and write each line centered both horizontally and vertically.
+    .DESCRIPTION
+        Used by Invoke-DhResize to show the "Terminal too small" message.
+        Guards against non-TTY environments (SetCursorPosition may throw).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string[]]$Lines,
+        [int]$Width  = 80,
+        [int]$Height = 24
+    )
+
+    try {
+        [Console]::Clear()
+        $startRow = [Math]::Max(1, [int](($Height - $Lines.Count) / 2))
+        for ($i = 0; $i -lt $Lines.Count; $i++) {
+            $row = $startRow + $i
+            $col = [Math]::Max(1, [int](($Width - $Lines[$i].Length) / 2))
+            [Console]::SetCursorPosition($col - 1, $row - 1)
+            [Console]::Write($Lines[$i])
+        }
+    } catch {
+        # Non-TTY or console API unavailable — silently skip
+        Write-Verbose "Write-DhCentered: terminal write failed — $_"
+    }
+}
+
+function Start-DhResizeWatcher {
+    <#
+    .SYNOPSIS
+        Launch a background runspace that polls terminal size every 200ms.
+    .DESCRIPTION
+        When a size change is detected, enqueues a resize token into the shared
+        ConcurrentQueue. The main event loop drains this queue and calls
+        Invoke-DhResize for each token.
+        Returns a handle object: @{ Runspace; PowerShell; AsyncResult }.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [System.Collections.Concurrent.ConcurrentQueue[object]]$Queue
+    )
+
+    try {
+        $sz    = $Host.UI.RawUI.WindowSize
+        $initW = $sz.Width
+        $initH = $sz.Height
+    } catch {
+        # RawUI unavailable (non-TTY); return a dummy handle
+        $initW = 80
+        $initH = 24
+    }
+
+    $rs = [runspacefactory]::CreateRunspace()
+    $rs.ApartmentState = 'STA'
+    $rs.ThreadOptions   = 'ReuseThread'
+    $rs.Open()
+
+    $ps = [powershell]::Create()
+    $ps.Runspace = $rs
+
+    $null = $ps.AddScript({
+        param($Queue, $InitialW, $InitialH)
+        $w = $InitialW
+        $h = $InitialH
+        while ($true) {
+            Start-Sleep -Milliseconds 200
+            try {
+                $sz = $Host.UI.RawUI.WindowSize
+                if ($sz.Width -ne $w -or $sz.Height -ne $h) {
+                    $w = $sz.Width
+                    $h = $sz.Height
+                    $null = $Queue.Enqueue([PSCustomObject]@{ Width = $w; Height = $h })
+                }
+            } catch {
+                # Host.UI.RawUI may not be available in this runspace on some
+                # platforms — silently continue polling.
+            }
+        }
+    }).AddParameter('Queue', $Queue).AddParameter('InitialW', $initW).AddParameter('InitialH', $initH)
+
+    $asyncResult = $ps.BeginInvoke()
+
+    return [PSCustomObject]@{
+        Runspace    = $rs
+        PowerShell  = $ps
+        AsyncResult = $asyncResult
+    }
+}
+
+function Stop-DhResizeWatcher {
+    <#
+    .SYNOPSIS
+        Stop the background resize-polling runspace and dispose resources.
+    .DESCRIPTION
+        Best-effort — always called in finally blocks during teardown.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][PSCustomObject]$Handle
+    )
+    try {
+        $Handle.PowerShell.Stop()
+        $Handle.PowerShell.Dispose()
+        $Handle.Runspace.Close()
+        $Handle.Runspace.Dispose()
+    } catch {
+        # Best-effort; teardown is happening anyway
+        Write-Verbose "Stop-DhResizeWatcher: cleanup error (ignored) — $_"
+    }
+}
+
+function Invoke-DhResize {
+    <#
+    .SYNOPSIS
+        Handle a terminal resize event: update state, show "too small" or re-render.
+    .DESCRIPTION
+        Called by the main event loop when a resize token is dequeued.
+        Updates $DerekhState.TerminalWidth/Height and $DerekhState.Paused.
+        When below minimum (60×15): shows centered "Terminal too small" message.
+        When restoring from too-small: unpauses and triggers a full re-render.
+    .PARAMETER NewWidth
+        New terminal width in columns.
+    .PARAMETER NewHeight
+        New terminal height in rows.
+    .PARAMETER State
+        The DerekhState hashtable (carries CurrentLayout, Paused, etc.).
+    .PARAMETER Theme
+        The resolved theme hashtable.
+    .PARAMETER Plan
+        The plan hashtable (used to recompute layout).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][int]$NewWidth,
+        [Parameter(Mandatory)][int]$NewHeight,
+        [Parameter(Mandatory)][hashtable]$State,
+        [Parameter(Mandatory)][hashtable]$Theme
+    )
+
+    $State.TerminalWidth  = $NewWidth
+    $State.TerminalHeight = $NewHeight
+
+    $minW = 60
+    $minH = 15
+
+    if ($NewWidth -lt $minW -or $NewHeight -lt $minH) {
+        $State.Paused = $true
+
+        $msgLines = @(
+            '+--------------------------------------+',
+            '|  Terminal too small                  |',
+            ("|  Resize to at least ${minW}x${minH} to resume  |"),
+            '+--------------------------------------+'
+        )
+        Write-DhCentered -Lines $msgLines -Width $NewWidth -Height $NewHeight
+        return
+    }
+
+    # If we were paused (was too-small) and are now large enough, unpause
+    if ($State.Paused) {
+        $State.Paused = $false
+    }
+
+    # Recompute layout and do a full re-render
+    $newLayout = Get-DhLayout -Width $NewWidth -Height $NewHeight -Theme $Theme
+    $State.CurrentLayout = $newLayout
+
+    # Full re-render with new layout
+    try { [Console]::Clear() } catch { }
+    Render-DhHeader      -State $State -Theme $Theme -Layout $newLayout
+    Render-DhPhasesPane  -State $State -Theme $Theme -Layout $newLayout
+    Render-DhActivePane  -State $State -Theme $Theme -Layout $newLayout
+
+    # In interactive (post-completion) mode, render with indices if that flag was set
+    if ($State.ContainsKey('InteractiveMode') -and $State.InteractiveMode) {
+        Render-DhIssuesPane -State $State -Theme $Theme -Layout $newLayout -ShowIndices
+    } else {
+        Render-DhIssuesPane -State $State -Theme $Theme -Layout $newLayout
+    }
+    Render-DhFooter      -State $State -Theme $Theme -Layout $newLayout
+
+    # Restore footer text appropriate to current mode
+    if ($State.ContainsKey('FooterText') -and $State.FooterText) {
+        Set-DhFooter -Text $State.FooterText -Layout $newLayout
+    }
+}
+
+# ── Phase G: Footer management ────────────────────────────────────────────────
+
+function Set-DhFooter {
+    <#
+    .SYNOPSIS
+        Write a new string to the footer region without a full re-render.
+    .DESCRIPTION
+        Positions cursor at the footer row, clears the line, writes the text
+        in the theme's dim color, then hides cursor again.
+        Requires $State.CurrentLayout to be set (done by Invoke-DhResize or
+        the initial layout computation in Invoke-DhPlan).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [hashtable]$Layout = $null
+    )
+
+    try {
+        $l = if ($null -ne $Layout) { $Layout } else { $null }
+        if ($null -eq $l) { return }
+
+        $row = $l.Footer.Y - 1   # 0-indexed
+        $col = $l.Footer.X - 1   # 0-indexed (layout uses 1-based)
+        if ($col -lt 0) { $col = 0 }
+
+        [Console]::SetCursorPosition($col, $row)
+        # Clear line then write text in dim style
+        [Console]::Write("`e[2K")
+        [Console]::Write("`e[2m$Text`e[0m")
+    } catch {
+        Write-Verbose "Set-DhFooter: footer write failed — $_"
+    }
+}
+
+function Invoke-DhFooterFlash {
+    <#
+    .SYNOPSIS
+        Flash a message in the footer for ~1 second, then revert — non-blocking.
+    .DESCRIPTION
+        Sets $State.FooterFlash. The main key loop checks this on each tick and
+        calls Set-DhFooter with the revert text when the duration elapses.
+        Does NOT use Start-Sleep.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [Parameter(Mandatory)][hashtable]$State,
+        [Parameter(Mandatory)][hashtable]$Layout,
+        [string]$RevertTo  = '[q] quit  [1-9] copy fix command',
+        [int]$DurationMs   = 1000
+    )
+
+    $State.FooterFlash = [PSCustomObject]@{
+        Message    = $Message
+        RevertTo   = $RevertTo
+        SW         = [System.Diagnostics.Stopwatch]::StartNew()
+        DurationMs = $DurationMs
+    }
+
+    Set-DhFooter -Text $Message -Layout $Layout
 }

@@ -533,21 +533,41 @@ function Invoke-DhPlan {
     $tuiThemeName   = Resolve-DhTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
     $tuiTheme       = Get-DhTheme -Name $tuiThemeName
 
-    # Ctrl+C handler: restore terminal and exit 130 (SIGINT convention).
+    # Expose state as module-level $DerekhState so scriptblocks in Enter-DhInteractiveMode
+    # (created via [scriptblock]::Create) can reference it by name.
+    $script:DerekhState = $state
+
+    # Ctrl+C handler: restore terminal, stop resize watcher, and exit 130.
     $cancelHandler = {
         param($sender, $e)
         $e.Cancel = $true
+        if ($null -ne $script:resizeHandle) {
+            Stop-DhResizeWatcher -Handle $script:resizeHandle
+            $script:resizeHandle = $null
+        }
         Stop-DhTui
         [Environment]::Exit(130)
     }
     $cancelEvent = Register-ObjectEvent -InputObject ([Console]) -EventName CancelKeyPress -Action $cancelHandler
 
+    # Phase G: resize watcher handle (script-scoped for trap access)
+    $script:resizeHandle = $null
+
     try {
         Initialize-DhTui
 
-        # Compute layout.
+        # Compute layout and seed terminal dimensions in state.
+        $sz = try { $Host.UI.RawUI.WindowSize } catch { @{ Width = $envInfo.Width; Height = $envInfo.Height } }
+        $state.TerminalWidth  = $sz.Width
+        $state.TerminalHeight = $sz.Height
+
         $layout = Get-DhLayout -Width $envInfo.Width -Height $envInfo.Height `
                                -Theme $tuiTheme
+        $state.CurrentLayout = $layout
+
+        # Start the background resize watcher (Phase G1).
+        $resizeQueue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
+        $script:resizeHandle = Start-DhResizeWatcher -Queue $resizeQueue
 
         # Initial full-frame render.
         Render-DhHeader      -State $state -Theme $tuiTheme -Layout $layout
@@ -556,7 +576,7 @@ function Invoke-DhPlan {
         Render-DhIssuesPane  -State $state -Theme $tuiTheme -Layout $layout
         Render-DhFooter      -State $state -Theme $tuiTheme -Layout $layout
 
-        # Key handlers — Phase F: quit only.
+        # Key handlers — quit only during plan execution.
         $shouldQuit = $false
         Clear-DhKeyHandlers
         Register-DhKeyHandler -Key 'Q'      -Action { $script:shouldQuit = $true }
@@ -565,6 +585,8 @@ function Invoke-DhPlan {
 
         # Run phases with TUI redraws on state change.
         foreach ($tuiPhase in $Plan.Phases) {
+            if ($shouldQuit) { break }
+
             $tuiPhaseType = if ($tuiPhase.ContainsKey('Type')) { $tuiPhase.Type } else { 'loop' }
             Set-DhStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status 'running'
             Render-DhPhasesPane -State $state -Theme $tuiTheme -Layout $layout
@@ -573,6 +595,33 @@ function Invoke-DhPlan {
 
             if ($tuiPhaseType -eq 'loop') {
                 foreach ($tuiItem in $tuiPhase.Items) {
+                    # Drain resize queue before each item
+                    $resizeEvent = $null
+                    while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
+                        $layout = Get-DhLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
+                        $state.CurrentLayout = $layout
+                        Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                            -State $state -Theme $tuiTheme
+                    }
+
+                    # Pause check: don't start new items while terminal is too small
+                    while ($state.Paused -and -not $shouldQuit) {
+                        if (Test-DhKeyAvailable) {
+                            $k = Read-DhKey
+                            Invoke-DhKeyDispatch -KeyInfo $k
+                        }
+                        $resizeEvent = $null
+                        while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
+                            $layout = Get-DhLayout -Width ([Math]::Max($resizeEvent.Width, 60)) `
+                                -Height ([Math]::Max($resizeEvent.Height, 15)) -Theme $tuiTheme
+                            $state.CurrentLayout = $layout
+                            Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                                -State $state -Theme $tuiTheme
+                        }
+                        Start-Sleep -Milliseconds 50
+                    }
+                    if ($shouldQuit) { break }
+
                     Set-DhStateActive -State $state -Label $tuiItem.ToString()
                     Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
 
@@ -636,6 +685,33 @@ function Invoke-DhPlan {
                 Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
 
             } elseif ($tuiPhaseType -eq 'single') {
+                # Drain resize queue before single phase
+                $resizeEvent = $null
+                while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
+                    $layout = Get-DhLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
+                    $state.CurrentLayout = $layout
+                    Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                        -State $state -Theme $tuiTheme
+                }
+
+                # Pause check
+                while ($state.Paused -and -not $shouldQuit) {
+                    if (Test-DhKeyAvailable) {
+                        $k = Read-DhKey
+                        Invoke-DhKeyDispatch -KeyInfo $k
+                    }
+                    $resizeEvent = $null
+                    while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
+                        $layout = Get-DhLayout -Width ([Math]::Max($resizeEvent.Width, 60)) `
+                            -Height ([Math]::Max($resizeEvent.Height, 15)) -Theme $tuiTheme
+                        $state.CurrentLayout = $layout
+                        Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                            -State $state -Theme $tuiTheme
+                    }
+                    Start-Sleep -Milliseconds 50
+                }
+                if ($shouldQuit) { break }
+
                 Set-DhStateActive -State $state -Label $tuiPhase.Name
                 Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
 
@@ -697,11 +773,33 @@ function Invoke-DhPlan {
         $state.ExitCode    = if ($tuiHasFail) { 2 } elseif ($tuiHasWarning) { 1 } else { 0 }
         $state.CompletedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
-        # Re-render footer with quit prompt (plan complete).
-        Render-DhFooter -State $state -Theme $tuiTheme -Layout $layout
+        if (-not $shouldQuit) {
+            # Phase G2: Enter post-completion interactive mode.
+            # Sets up [1-9] key handlers, updates footer, then falls into the wait loop below.
+            Enter-DhInteractiveMode -State $state -Theme $tuiTheme -Layout $layout `
+                -ShouldQuitRef ([ref]$shouldQuit)
+        }
 
         # Wait loop: poll keys at 50ms intervals until quit.
+        # Drains resize queue and checks footer flash timer on each tick.
         while (-not $shouldQuit) {
+            # Drain resize events
+            $resizeEvent = $null
+            while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
+                $layout = Get-DhLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
+                $state.CurrentLayout = $layout
+                Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                    -State $state -Theme $tuiTheme
+            }
+
+            # Expire footer flash if duration elapsed
+            if ($null -ne $state.FooterFlash) {
+                if ($state.FooterFlash.SW.ElapsedMilliseconds -ge $state.FooterFlash.DurationMs) {
+                    Set-DhFooter -Text $state.FooterFlash.RevertTo -Layout $layout
+                    $state.FooterFlash = $null
+                }
+            }
+
             if (Test-DhKeyAvailable) {
                 $waitKey = Read-DhKey
                 Invoke-DhKeyDispatch -KeyInfo $waitKey
@@ -710,6 +808,11 @@ function Invoke-DhPlan {
         }
 
     } finally {
+        # Stop resize watcher before cleaning up TUI
+        if ($null -ne $script:resizeHandle) {
+            Stop-DhResizeWatcher -Handle $script:resizeHandle
+            $script:resizeHandle = $null
+        }
         Stop-DhTui
         Unregister-Event -SourceIdentifier $cancelEvent.Name -ErrorAction SilentlyContinue
         Remove-Job -Id $cancelEvent.Id -Force -ErrorAction SilentlyContinue

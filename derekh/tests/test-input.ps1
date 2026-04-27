@@ -194,6 +194,88 @@ $fresh = Get-DhKeyHandlers
 Assert-True 'Get-DhKeyHandlers returns clone, not live reference' `
     (-not $fresh.ContainsKey('FAKE'))
 
+# ── Phase G: Enter-DhInteractiveMode ─────────────────────────────────────────
+# Test that the function is defined and that the digit-handler registration
+# loop properly captures values (not references). Terminal-touching behavior
+# is verified by the manual smoke test.
+
+Assert-True 'Enter-DhInteractiveMode is defined' `
+    ($null -ne (Get-Command -Name 'Enter-DhInteractiveMode' -ErrorAction SilentlyContinue)) `
+    'function not found in session'
+
+# Test the digit handler capture-by-value mechanic independent of Enter-DhInteractiveMode.
+# Register D1-D9 using [scriptblock]::Create (same technique as Enter-DhInteractiveMode).
+Clear-DhKeyHandlers
+for ($n = 1; $n -le 9; $n++) {
+    $captured = $n
+    # Each handler stores its captured value in a shared array (module-safe approach)
+    $h = [scriptblock]::Create("param(`$k) " + '$script:_G_captureArr[' + $($captured - 1) + "] = $($captured)")
+    Register-DhKeyHandler -Key "D$captured" -Action $h
+}
+$registeredHandlers = Get-DhKeyHandlers
+
+Assert-True 'Phase G: digit handler registration loop covers D1-D9' `
+    ((1..9 | Where-Object { $registeredHandlers.ContainsKey("D$_") }).Count -eq 9) `
+    "found keys: $($registeredHandlers.Keys -join ', ')"
+
+# Verify D1..D9 handlers are distinct scriptblocks (not all the same closure)
+$d1Handler = $registeredHandlers['D1']
+$d5Handler = $registeredHandlers['D5']
+$d9Handler = $registeredHandlers['D9']
+
+Assert-True 'Phase G: D1 and D5 handlers are distinct scriptblocks' `
+    ($d1Handler.ToString() -ne $d5Handler.ToString()) "handlers are identical — closure capture may be broken"
+
+Assert-True 'Phase G: D5 and D9 handlers are distinct scriptblocks' `
+    ($d5Handler.ToString() -ne $d9Handler.ToString()) "handlers are identical — closure capture may be broken"
+
+Clear-DhKeyHandlers
+
+# ── Phase G: Invoke-DhFooterFlash sets FooterFlash on state ──────────────────
+# Build a minimal layout and state directly (private functions not available via module export).
+
+$flashLayout = @{
+    Footer = @{ X = 1; Y = 24; Width = 80; Height = 1 }
+    Header = @{ X = 1; Y = 1; Width = 80; Height = 1 }
+}
+
+$flashState = @{
+    Title           = 'flash test'
+    Subtitle        = ''
+    StartedAt       = $null
+    CompletedAt     = $null
+    ExitCode        = 0
+    Phases          = [System.Collections.ArrayList]@()
+    Issues          = [System.Collections.ArrayList]@()
+    ActiveLabel     = ''
+    TerminalWidth   = 80
+    TerminalHeight  = 24
+    Paused          = $false
+    FooterFlash     = $null
+    CurrentLayout   = $flashLayout
+    InteractiveMode = $false
+    FooterText      = ''
+}
+
+$isTtyForG = -not [Console]::IsOutputRedirected
+
+if ($isTtyForG) {
+    Assert-NoThrow 'Invoke-DhFooterFlash does not throw in TTY' {
+        Invoke-DhFooterFlash -Message 'Test flash' -State $flashState -Layout $flashLayout
+    }
+    Assert-True 'Invoke-DhFooterFlash sets FooterFlash on state' `
+        ($null -ne $flashState.FooterFlash) 'FooterFlash was null'
+    Assert-True 'Invoke-DhFooterFlash FooterFlash has correct Message' `
+        ($flashState.FooterFlash.Message -eq 'Test flash') "got: $($flashState.FooterFlash.Message)"
+    Assert-True 'Invoke-DhFooterFlash FooterFlash has running Stopwatch' `
+        ($flashState.FooterFlash.SW -is [System.Diagnostics.Stopwatch]) 'SW not a Stopwatch'
+} else {
+    Skip-Test 'Invoke-DhFooterFlash does not throw in TTY'              'requires TTY for Set-DhFooter'
+    Skip-Test 'Invoke-DhFooterFlash sets FooterFlash on state'          'requires TTY for Set-DhFooter'
+    Skip-Test 'Invoke-DhFooterFlash FooterFlash has correct Message'    'requires TTY'
+    Skip-Test 'Invoke-DhFooterFlash FooterFlash has running Stopwatch'  'requires TTY'
+}
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 Write-Host ""

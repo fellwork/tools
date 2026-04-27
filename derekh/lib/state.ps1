@@ -8,14 +8,22 @@ function New-DhState {
         [string]$Subtitle = ""
     )
     return @{
-        Title       = $Title
-        Subtitle    = $Subtitle
-        StartedAt   = $null
-        CompletedAt = $null
-        ExitCode    = 0
-        Phases      = [System.Collections.ArrayList]@()
-        Issues      = [System.Collections.ArrayList]@()
-        ActiveLabel = ""
+        Title          = $Title
+        Subtitle       = $Subtitle
+        StartedAt      = $null
+        CompletedAt    = $null
+        ExitCode       = 0
+        Phases         = [System.Collections.ArrayList]@()
+        Issues         = [System.Collections.ArrayList]@()
+        ActiveLabel    = ""
+        # Phase G: resize tracking
+        TerminalWidth  = 0
+        TerminalHeight = 0
+        Paused         = $false
+        # Phase G: footer flash state
+        FooterFlash    = $null   # [PSCustomObject]@{ Message; RevertTo; SW; DurationMs } | $null
+        # Phase G: cached layout for Set-DhFooter
+        CurrentLayout  = $null
     }
 }
 

@@ -54,7 +54,23 @@ foreach ($fn in $drawers) {
     Assert-True "Function defined: $fn" ($null -ne $cmd) "not found in session"
 }
 
-# ── 2. SKIP visual-output tests (verified by manual smoke test) ───────────────
+# ── 2. Phase G functions are defined ─────────────────────────────────────────
+
+$phaseGFunctions = @(
+    'Write-DhCentered',
+    'Start-DhResizeWatcher',
+    'Stop-DhResizeWatcher',
+    'Invoke-DhResize',
+    'Set-DhFooter',
+    'Invoke-DhFooterFlash'
+)
+
+foreach ($fn in $phaseGFunctions) {
+    $cmd = Get-Command -Name $fn -ErrorAction SilentlyContinue
+    Assert-True "Phase G function defined: $fn" ($null -ne $cmd) "not found in session"
+}
+
+# ── 3. SKIP visual-output tests (verified by manual smoke test) ───────────────
 
 $skippedTests = @(
     'Render-DhHeader draws title on correct row'
@@ -65,12 +81,47 @@ $skippedTests = @(
     'Render-DhActivePane shows Waiting... when no active item'
     'Render-DhIssuesPane shows No issues when list is empty'
     'Render-DhIssuesPane auto-scrolls to latest when count > maxRows'
+    'Render-DhIssuesPane ShowIndices prefixes issues 1-9 with [N]'
+    'Render-DhIssuesPane ShowIndices issue 10+ gets 4-space indent'
     'Render-DhFooter shows [q] quit hint'
     '_Draw-DhBox draws correct borders using theme glyphs'
+    'Write-DhCentered renders centered box on screen'
+    'Invoke-DhResize shows too-small message for 40x10'
+    'Invoke-DhResize full re-render for 80x24'
+    'Set-DhFooter updates footer row without full re-render'
+    'Invoke-DhFooterFlash shows message then reverts'
 )
 
 foreach ($t in $skippedTests) {
-    Skip-Test $t 'visual output — verified by tests/manual-smoke.ps1 (F5)'
+    Skip-Test $t 'visual output — verified by tests/manual-smoke.ps1 (G3)'
+}
+
+# ── 4. Start-DhResizeWatcher / Stop-DhResizeWatcher lifecycle (non-TTY) ───────
+# The watcher uses a background runspace. We can test that it starts and stops
+# cleanly without actually polling [Console]::WindowSize (which may throw in CI).
+
+$isTtyForResize = -not [Console]::IsOutputRedirected
+
+if ($isTtyForResize) {
+    $queue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
+    $handle = $null
+    Assert-NoThrow 'Start-DhResizeWatcher does not throw' {
+        $script:handle = Start-DhResizeWatcher -Queue $queue
+    }
+    Assert-True 'Start-DhResizeWatcher returns handle with Runspace' `
+        ($null -ne $script:handle -and $null -ne $script:handle.Runspace) `
+        'Runspace was null'
+    Assert-True 'Start-DhResizeWatcher returns handle with PowerShell' `
+        ($null -ne $script:handle -and $null -ne $script:handle.PowerShell) `
+        'PowerShell was null'
+    Assert-NoThrow 'Stop-DhResizeWatcher does not throw' {
+        Stop-DhResizeWatcher -Handle $script:handle
+    }
+} else {
+    Skip-Test 'Start-DhResizeWatcher does not throw'                'requires TTY — WindowSize unavailable in CI'
+    Skip-Test 'Start-DhResizeWatcher returns handle with Runspace'  'requires TTY'
+    Skip-Test 'Start-DhResizeWatcher returns handle with PowerShell' 'requires TTY'
+    Skip-Test 'Stop-DhResizeWatcher does not throw'                 'requires TTY'
 }
 
 # ── Summary ───────────────────────────────────────────────────────────────────

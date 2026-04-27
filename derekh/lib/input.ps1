@@ -151,3 +151,73 @@ function Invoke-DhKeyDispatch {
         }
     }
 }
+
+# ── Phase G: Post-completion interactive mode ─────────────────────────────────
+
+function Enter-DhInteractiveMode {
+    <#
+    .SYNOPSIS
+        Enter post-completion interactive mode after all phases have finished.
+    .DESCRIPTION
+        1. Re-renders the issues pane with [1]-[9] numeric prefixes.
+        2. Updates the footer to show [q] quit  [1-9] copy fix command.
+        3. Registers digit key handlers (1-9) that copy FixCommands to clipboard.
+        4. Enters an idle key loop that exits when q/Esc/Enter is pressed.
+    .PARAMETER State
+        The DerekhState hashtable.
+    .PARAMETER Theme
+        The resolved theme hashtable.
+    .PARAMETER Layout
+        The current layout hashtable.
+    .PARAMETER ShouldQuitRef
+        A [ref] to the $shouldQuit boolean in the caller's scope.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$State,
+        [Parameter(Mandatory)][hashtable]$Theme,
+        [Parameter(Mandatory)][hashtable]$Layout,
+        [Parameter(Mandatory)][ref]$ShouldQuitRef
+    )
+
+    # Mark state as interactive so resize re-renders use ShowIndices
+    $State.InteractiveMode = $true
+    $State.FooterText = '[q] quit  [1-9] copy fix command'
+
+    # Re-render issues pane with numeric indices
+    Render-DhIssuesPane -State $State -Theme $Theme -Layout $Layout -ShowIndices
+
+    # Update footer
+    Set-DhFooter -Text '[q] quit  [1-9] copy fix command' -Layout $Layout
+
+    # Register digit key handlers for issues 1-9
+    # Use [scriptblock]::Create with string interpolation to force capture-by-value.
+    # $script:DerekhState is set in derekh.psm1 before Invoke-DhPlan enters the TUI path.
+    for ($n = 1; $n -le 9; $n++) {
+        $captured = $n
+        $handler = [scriptblock]::Create("
+            param(`$keyInfo)
+            `$_st = `$script:DerekhState
+            if (`$null -eq `$_st) { return }
+            `$idx = $($captured) - 1
+            if (`$idx -ge `$_st.Issues.Count) {
+                Invoke-DhFooterFlash -Message 'No command to copy' ``
+                    -State `$_st -Layout `$_st.CurrentLayout
+                return
+            }
+            `$issue = `$_st.Issues[`$idx]
+            if (`$issue.FixCommand) {
+                Set-DhClipboard -Text `$issue.FixCommand | Out-Null
+                Invoke-DhFooterFlash -Message 'Copied to clipboard' ``
+                    -State `$_st -Layout `$_st.CurrentLayout
+            } else {
+                Invoke-DhFooterFlash -Message 'No command to copy' ``
+                    -State `$_st -Layout `$_st.CurrentLayout
+            }
+        ")
+        Register-DhKeyHandler -Key "D$captured" -Action $handler
+    }
+
+    # The caller's key loop continues with the updated handlers and ShouldQuitRef
+    # — this function just sets up the mode; the main loop in derekh.psm1 does the polling.
+}

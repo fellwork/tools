@@ -48,6 +48,16 @@
         # Clipboard (Phase F4)
         'Test-DhClipboardAvailable'
         'Set-DhClipboard'
+        # Resize handling (Phase G1)
+        'Write-DhCentered'
+        'Start-DhResizeWatcher'
+        'Stop-DhResizeWatcher'
+        'Invoke-DhResize'
+        # Footer management (Phase G2)
+        'Set-DhFooter'
+        'Invoke-DhFooterFlash'
+        # Post-completion interactive mode (Phase G2)
+        'Enter-DhInteractiveMode'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
