@@ -1,0 +1,83 @@
+{
+  "$schema": "../theme-schema.json",
+  "name": "twilight",
+  "description": "Stardew Valley dusk palette — purple sky, lantern gold, mint accents",
+
+  "palette": {
+    "bg":        "#1a1830",
+    "bg_alt":    "#2b2040",
+    "fg":        "#e0d4ec",
+    "frame":     "#b48fd4",
+    "title":     "#f8e0a0",
+    "accent":    "#f8b870",
+    "ok":        "#88e8a8",
+    "warn":      "#f8b870",
+    "fail":      "#ec7878",
+    "running":   "#88c8f8",
+    "pending":   "#6a5878",
+    "dim":       "#9888a8",
+    "chip_bg":   "#382850"
+  },
+
+  "glyphs": {
+    "phase_pending":    "○",
+    "phase_running":    "◐",
+    "phase_ok":         "✓",
+    "phase_fail":       "✗",
+    "phase_warn":       "⚠",
+    "spinner_frames":   ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"],
+    "progress_filled":  "█",
+    "progress_empty":   "░",
+    "progress_partial": "▒",
+    "frame_tl": "╭", "frame_tr": "╮",
+    "frame_bl": "╰", "frame_br": "╯",
+    "frame_h":  "─", "frame_v":  "│",
+    "frame_t":  "┬", "frame_b":  "┴", "frame_l": "├", "frame_r": "┤",
+    "icon_title":  "🌙",
+    "icon_done":   "✨",
+    "icon_alert":  "⚠"
+  },
+
+  "sections": {
+    "header": {
+      "title_format": "{icon_title} {title}",
+      "show_subtitle": true,
+      "show_progress_bar": true,
+      "progress_bar_width": 20
+    },
+    "phases_pane": {
+      "min_width": 24,
+      "max_width": 32,
+      "show_phase_progress": true
+    },
+    "active_pane": {
+      "show_spinner": true,
+      "show_elapsed": true
+    },
+    "issues_pane": {
+      "max_visible": 8,
+      "auto_scroll": true,
+      "show_indices": true
+    },
+    "footer": {
+      "show_keybinds": true,
+      "keybind_format": "[{key}] {label}"
+    }
+  },
+
+  "ascii_fallback": {
+    "enabled": true,
+    "phase_pending":    "[ ]",
+    "phase_running":    "[~]",
+    "phase_ok":         "[+]",
+    "phase_fail":       "[!]",
+    "phase_warn":       "[?]",
+    "spinner_frames":   ["|","/","-","\\"],
+    "progress_filled":  "#",
+    "progress_empty":   "-",
+    "frame_tl": "+", "frame_tr": "+",
+    "frame_bl": "+", "frame_br": "+",
+    "frame_h":  "-", "frame_v":  "|",
+    "frame_t":  "+", "frame_b":  "+", "frame_l": "+", "frame_r": "+"
+  }
+}
