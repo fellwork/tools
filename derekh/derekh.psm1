@@ -22,10 +22,4 @@ function Get-DhVersion {
 }
 
 function Invoke-DhPlan      { throw [System.NotImplementedException]::new("Invoke-DhPlan: implemented in Phase D (headless) and Phases E/F/G (other modes)") }
-function New-DhPlan         { throw [System.NotImplementedException]::new("New-DhPlan: implemented in Phase B") }
-function Add-DhLoopPhase    { throw [System.NotImplementedException]::new("Add-DhLoopPhase: implemented in Phase B") }
-function Add-DhSinglePhase  { throw [System.NotImplementedException]::new("Add-DhSinglePhase: implemented in Phase B") }
-function New-DhResult       { throw [System.NotImplementedException]::new("New-DhResult: implemented in Phase B") }
-function New-DhAlert        { throw [System.NotImplementedException]::new("New-DhAlert: implemented in Phase B") }
-function Get-DhTheme        { throw [System.NotImplementedException]::new("Get-DhTheme: implemented in Phase B") }
 function Test-DhEnvironment { throw [System.NotImplementedException]::new("Test-DhEnvironment: implemented in Phase F") }
