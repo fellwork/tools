@@ -334,8 +334,386 @@ function Invoke-DhPlan {
         return $state.ExitCode
     }
 
-    # ── Default TUI path — Phase F stub ──────────────────────────────────────
-    throw "Invoke-DhPlan (TUI): Phase F (TUI renderer) not yet implemented."
-}
+    # ── Default TUI path — Phase F ────────────────────────────────────────────
 
-function Test-DhEnvironment { throw [System.NotImplementedException]::new("Test-DhEnvironment: implemented in Phase F") }
+    # TUI teardown safety net: any unhandled exception exits the alt buffer.
+    trap {
+        Stop-DhTui
+        Write-Error $_ -ErrorAction Continue
+        exit 2
+    }
+
+    # Environment check: fall through to streaming if terminal is incapable.
+    $envInfo = Test-DhEnvironment
+    $useTui  = $envInfo.IsTty -and $envInfo.Fits -and $envInfo.HasColor
+
+    if (-not $useTui) {
+        # Streaming fallback (same as -NoTui path above).
+        $colorEnabled = (-not $NoColor.IsPresent) -and [string]::IsNullOrEmpty($env:NO_COLOR)
+        $themeName2    = Resolve-DhTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
+        $resolvedTheme2 = Get-DhTheme -Name $themeName2
+
+        Invoke-DhStreamingRender -Event @{
+            Type     = 'plan-started'
+            Theme    = $resolvedTheme2
+            Title    = $Plan.Title
+            Subtitle = if ($Plan.Subtitle) { $Plan.Subtitle } else { (Get-Date -Format 'HH:mm:ss') }
+        } -ColorEnabled $colorEnabled
+
+        $phaseIndex2 = 0
+        $phaseTotal2 = $Plan.Phases.Count
+
+        foreach ($planPhase2 in $Plan.Phases) {
+            $phaseIndex2++
+            $phaseType2 = if ($planPhase2.ContainsKey('Type')) { $planPhase2.Type } else { 'loop' }
+
+            Invoke-DhStreamingRender -Event @{
+                Type       = 'phase-started'
+                Theme      = $resolvedTheme2
+                PhaseName  = $planPhase2.Name
+                PhaseType  = $phaseType2
+                PhaseIndex = $phaseIndex2
+                PhaseTotal = $phaseTotal2
+            } -ColorEnabled $colorEnabled
+
+            Set-DhStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status 'running'
+            $phaseHadFail2 = $false
+
+            if ($phaseType2 -eq 'loop') {
+                $items2     = $planPhase2.Items
+                $itemCount2 = $items2.Count
+                $itemIdx2   = 0
+
+                foreach ($item2 in $items2) {
+                    $itemIdx2++
+                    Set-DhStateActive -State $state -Label $item2.ToString()
+
+                    $result2 = $null
+                    try {
+                        $result2 = & $planPhase2.Action $item2
+                        if ($null -eq $result2 -or $result2 -isnot [hashtable]) {
+                            $result2 = @{ Success = $true; Message = $item2.ToString() }
+                        }
+                        $result2 = _Normalize-DhResult -Result $result2
+                    } catch {
+                        $result2 = _Normalize-DhResult -Result @{
+                            Success  = $false
+                            Message  = $_.Exception.Message
+                            Severity = 'fail'
+                            Animal   = 'raccoon'
+                            LogTail  = @($_.ScriptStackTrace)
+                        }
+                    }
+
+                    $itemStatus2 = if ($result2.Success) { 'ok' } else {
+                        if ($result2.Severity -eq 'warning') { 'warn' } else { 'fail' }
+                    }
+                    Add-DhStatePhaseItem -State $state -PhaseName $planPhase2.Name `
+                        -ItemName $item2.ToString() -Status $itemStatus2 -Message $result2.Message
+
+                    if (-not $result2.Success) {
+                        $phaseHadFail2 = $true
+                        Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                            -Severity $result2.Severity -Message $result2.Message `
+                            -FixCommand $result2.FixCommand -Animal $result2.Animal `
+                            -LogTail $result2.LogTail
+                    }
+
+                    if ($result2.Alerts -and $result2.Alerts.Count -gt 0) {
+                        foreach ($alert2 in $result2.Alerts) {
+                            Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                                -Severity $alert2.Severity -Message $alert2.Message `
+                                -FixCommand $alert2.FixCommand
+                        }
+                    }
+
+                    $sev2   = if ($result2.Success) { 'ok' } elseif ($result2.Severity -eq 'warning') { 'warning' } else { 'fail' }
+                    $isLast2 = ($itemIdx2 -eq $itemCount2)
+                    Invoke-DhStreamingRender -Event @{
+                        Type      = 'phase-progress'
+                        Theme     = $resolvedTheme2
+                        PhaseName = $planPhase2.Name
+                        ItemName  = $item2.ToString()
+                        Message   = $result2.Message
+                        Success   = $result2.Success
+                        Severity  = $sev2
+                        IsLast    = $isLast2
+                    } -ColorEnabled $colorEnabled
+                }
+
+                Set-DhStateActive -State $state -Label ''
+                $statePhase2 = $state.Phases | Where-Object { $_.Name -eq $planPhase2.Name } | Select-Object -First 1
+                $okCount2    = @($statePhase2.Items | Where-Object { $_.Status -eq 'ok' }).Count
+                $phaseStatus2 = if ($phaseHadFail2) {
+                    if ($okCount2 -gt 0) { 'warn' } else { 'fail' }
+                } else { 'ok' }
+                Set-DhStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status $phaseStatus2
+
+                Invoke-DhStreamingRender -Event @{
+                    Type       = 'phase-completed'
+                    Theme      = $resolvedTheme2
+                    PhaseName  = $planPhase2.Name
+                    PhaseType  = 'loop'
+                    Status     = $phaseStatus2
+                    OkCount    = $okCount2
+                    TotalCount = $itemCount2
+                } -ColorEnabled $colorEnabled
+
+            } elseif ($phaseType2 -eq 'single') {
+                Set-DhStateActive -State $state -Label $planPhase2.Name
+
+                $result2 = $null
+                try {
+                    $result2 = & $planPhase2.Action
+                    if ($null -eq $result2 -or $result2 -isnot [hashtable]) {
+                        $result2 = @{ Success = $true; Message = $planPhase2.Name }
+                    }
+                    $result2 = _Normalize-DhResult -Result $result2
+                } catch {
+                    $result2 = _Normalize-DhResult -Result @{
+                        Success  = $false
+                        Message  = $_.Exception.Message
+                        Severity = 'fail'
+                        Animal   = 'raccoon'
+                        LogTail  = @($_.ScriptStackTrace)
+                    }
+                }
+
+                Set-DhStateActive -State $state -Label ''
+
+                if (-not $result2.Success) {
+                    $phaseHadFail2 = $true
+                    Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                        -Severity $result2.Severity -Message $result2.Message `
+                        -FixCommand $result2.FixCommand -Animal $result2.Animal `
+                        -LogTail $result2.LogTail
+                }
+
+                if ($result2.Alerts -and $result2.Alerts.Count -gt 0) {
+                    foreach ($alert2 in $result2.Alerts) {
+                        Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                            -Severity $alert2.Severity -Message $alert2.Message `
+                            -FixCommand $alert2.FixCommand
+                    }
+                }
+
+                $phaseStatus2 = if ($phaseHadFail2) { 'fail' } else { 'ok' }
+                Set-DhStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status $phaseStatus2
+
+                Invoke-DhStreamingRender -Event @{
+                    Type       = 'phase-completed'
+                    Theme      = $resolvedTheme2
+                    PhaseName  = $planPhase2.Name
+                    PhaseType  = 'single'
+                    Status     = $phaseStatus2
+                    OkCount    = if ($result2.Success) { 1 } else { 0 }
+                    TotalCount = 1
+                } -ColorEnabled $colorEnabled
+            }
+        }
+
+        $hasFail2    = @($state.Issues | Where-Object { $_.Severity -eq 'fail' }).Count -gt 0
+        $hasWarning2 = @($state.Issues | Where-Object { $_.Severity -eq 'warning' }).Count -gt 0
+        $state.ExitCode = if ($hasFail2) { 2 } elseif ($hasWarning2) { 1 } else { 0 }
+        $state.CompletedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
+        Invoke-DhStreamingRender -Event @{
+            Type     = 'plan-completed'
+            Theme    = $resolvedTheme2
+            State    = $state
+            ExitCode = $state.ExitCode
+        } -ColorEnabled $colorEnabled
+
+        return $state.ExitCode
+    }
+
+    # ── Full TUI path ─────────────────────────────────────────────────────────
+
+    # Resolve theme for TUI.
+    $tuiThemeName   = Resolve-DhTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
+    $tuiTheme       = Get-DhTheme -Name $tuiThemeName
+
+    # Ctrl+C handler: restore terminal and exit 130 (SIGINT convention).
+    $cancelHandler = {
+        param($sender, $e)
+        $e.Cancel = $true
+        Stop-DhTui
+        [Environment]::Exit(130)
+    }
+    $cancelEvent = Register-ObjectEvent -InputObject ([Console]) -EventName CancelKeyPress -Action $cancelHandler
+
+    try {
+        Initialize-DhTui
+
+        # Compute layout.
+        $layout = Get-DhLayout -Width $envInfo.Width -Height $envInfo.Height `
+                               -Theme $tuiTheme
+
+        # Initial full-frame render.
+        Render-DhHeader      -State $state -Theme $tuiTheme -Layout $layout
+        Render-DhPhasesPane  -State $state -Theme $tuiTheme -Layout $layout
+        Render-DhActivePane  -State $state -Theme $tuiTheme -Layout $layout
+        Render-DhIssuesPane  -State $state -Theme $tuiTheme -Layout $layout
+        Render-DhFooter      -State $state -Theme $tuiTheme -Layout $layout
+
+        # Key handlers — Phase F: quit only.
+        $shouldQuit = $false
+        Clear-DhKeyHandlers
+        Register-DhKeyHandler -Key 'Q'      -Action { $script:shouldQuit = $true }
+        Register-DhKeyHandler -Key 'Escape' -Action { $script:shouldQuit = $true }
+        Register-DhKeyHandler -Key 'Enter'  -Action { $script:shouldQuit = $true }
+
+        # Run phases with TUI redraws on state change.
+        foreach ($tuiPhase in $Plan.Phases) {
+            $tuiPhaseType = if ($tuiPhase.ContainsKey('Type')) { $tuiPhase.Type } else { 'loop' }
+            Set-DhStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status 'running'
+            Render-DhPhasesPane -State $state -Theme $tuiTheme -Layout $layout
+
+            $tuiPhaseHadFail = $false
+
+            if ($tuiPhaseType -eq 'loop') {
+                foreach ($tuiItem in $tuiPhase.Items) {
+                    Set-DhStateActive -State $state -Label $tuiItem.ToString()
+                    Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+
+                    $tuiResult = $null
+                    try {
+                        $tuiResult = & $tuiPhase.Action $tuiItem
+                        if ($null -eq $tuiResult -or $tuiResult -isnot [hashtable]) {
+                            $tuiResult = @{ Success = $true; Message = $tuiItem.ToString() }
+                        }
+                        $tuiResult = _Normalize-DhResult -Result $tuiResult
+                    } catch {
+                        $tuiResult = _Normalize-DhResult -Result @{
+                            Success  = $false
+                            Message  = $_.Exception.Message
+                            Severity = 'fail'
+                            Animal   = 'raccoon'
+                            LogTail  = @($_.ScriptStackTrace)
+                        }
+                    }
+
+                    $tuiItemStatus = if ($tuiResult.Success) { 'ok' } else {
+                        if ($tuiResult.Severity -eq 'warning') { 'warn' } else { 'fail' }
+                    }
+                    Add-DhStatePhaseItem -State $state -PhaseName $tuiPhase.Name `
+                        -ItemName $tuiItem.ToString() -Status $tuiItemStatus -Message $tuiResult.Message
+
+                    if (-not $tuiResult.Success) {
+                        $tuiPhaseHadFail = $true
+                        Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                            -Severity $tuiResult.Severity -Message $tuiResult.Message `
+                            -FixCommand $tuiResult.FixCommand -Animal $tuiResult.Animal `
+                            -LogTail $tuiResult.LogTail
+                        Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                    }
+
+                    if ($tuiResult.Alerts -and $tuiResult.Alerts.Count -gt 0) {
+                        foreach ($tuiAlert in $tuiResult.Alerts) {
+                            Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                                -Severity $tuiAlert.Severity -Message $tuiAlert.Message `
+                                -FixCommand $tuiAlert.FixCommand
+                        }
+                        Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                    }
+
+                    # Poll for quit key between items.
+                    if (Test-DhKeyAvailable) {
+                        $tuiKey = Read-DhKey
+                        Invoke-DhKeyDispatch -KeyInfo $tuiKey
+                    }
+                    if ($shouldQuit) { break }
+                }
+
+                Set-DhStateActive -State $state -Label ''
+                $tuiStatePhase = $state.Phases | Where-Object { $_.Name -eq $tuiPhase.Name } | Select-Object -First 1
+                $tuiOkCount    = @($tuiStatePhase.Items | Where-Object { $_.Status -eq 'ok' }).Count
+                $tuiPhaseStatus = if ($tuiPhaseHadFail) {
+                    if ($tuiOkCount -gt 0) { 'warn' } else { 'fail' }
+                } else { 'ok' }
+                Set-DhStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status $tuiPhaseStatus
+                Render-DhPhasesPane -State $state -Theme $tuiTheme -Layout $layout
+                Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+
+            } elseif ($tuiPhaseType -eq 'single') {
+                Set-DhStateActive -State $state -Label $tuiPhase.Name
+                Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+
+                $tuiResult = $null
+                try {
+                    $tuiResult = & $tuiPhase.Action
+                    if ($null -eq $tuiResult -or $tuiResult -isnot [hashtable]) {
+                        $tuiResult = @{ Success = $true; Message = $tuiPhase.Name }
+                    }
+                    $tuiResult = _Normalize-DhResult -Result $tuiResult
+                } catch {
+                    $tuiResult = _Normalize-DhResult -Result @{
+                        Success  = $false
+                        Message  = $_.Exception.Message
+                        Severity = 'fail'
+                        Animal   = 'raccoon'
+                        LogTail  = @($_.ScriptStackTrace)
+                    }
+                }
+
+                Set-DhStateActive -State $state -Label ''
+
+                if (-not $tuiResult.Success) {
+                    $tuiPhaseHadFail = $true
+                    Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                        -Severity $tuiResult.Severity -Message $tuiResult.Message `
+                        -FixCommand $tuiResult.FixCommand -Animal $tuiResult.Animal `
+                        -LogTail $tuiResult.LogTail
+                    Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                }
+
+                if ($tuiResult.Alerts -and $tuiResult.Alerts.Count -gt 0) {
+                    foreach ($tuiAlert in $tuiResult.Alerts) {
+                        Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                            -Severity $tuiAlert.Severity -Message $tuiAlert.Message `
+                            -FixCommand $tuiAlert.FixCommand
+                    }
+                    Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                }
+
+                $tuiPhaseStatus = if ($tuiPhaseHadFail) { 'fail' } else { 'ok' }
+                Set-DhStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status $tuiPhaseStatus
+                Render-DhPhasesPane -State $state -Theme $tuiTheme -Layout $layout
+                Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+
+                # Poll for quit key.
+                if (Test-DhKeyAvailable) {
+                    $tuiKey = Read-DhKey
+                    Invoke-DhKeyDispatch -KeyInfo $tuiKey
+                }
+            }
+
+            if ($shouldQuit) { break }
+        }
+
+        # Compute final exit code.
+        $tuiHasFail    = @($state.Issues | Where-Object { $_.Severity -eq 'fail' }).Count -gt 0
+        $tuiHasWarning = @($state.Issues | Where-Object { $_.Severity -eq 'warning' }).Count -gt 0
+        $state.ExitCode    = if ($tuiHasFail) { 2 } elseif ($tuiHasWarning) { 1 } else { 0 }
+        $state.CompletedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
+        # Re-render footer with quit prompt (plan complete).
+        Render-DhFooter -State $state -Theme $tuiTheme -Layout $layout
+
+        # Wait loop: poll keys at 50ms intervals until quit.
+        while (-not $shouldQuit) {
+            if (Test-DhKeyAvailable) {
+                $waitKey = Read-DhKey
+                Invoke-DhKeyDispatch -KeyInfo $waitKey
+            }
+            Start-Sleep -Milliseconds 50
+        }
+
+    } finally {
+        Stop-DhTui
+        Unregister-Event -SourceIdentifier $cancelEvent.Name -ErrorAction SilentlyContinue
+        Remove-Job -Id $cancelEvent.Id -Force -ErrorAction SilentlyContinue
+    }
+
+    exit $state.ExitCode
+}
