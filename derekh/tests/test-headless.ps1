@@ -126,9 +126,70 @@ try {
     $script:failures++
 }
 
+Write-Host ""
+
+# ── D2: Invoke-DhPlan -Headless subprocess integration ───────────────────────
+# Use a helper plan script to avoid needing a real module import in the test.
+# The helper script dot-sources the lib files directly.
+
+# Embed the absolute module path so the helper works from $env:TEMP
+$_derekhModulePath = (Resolve-Path "$moduleRoot/derekh.psm1").Path -replace '\\', '/'
+
+$helperScript = @"
+param([switch]`$Headless, [switch]`$NoTui)
+Set-StrictMode -Version Latest
+`$ErrorActionPreference = 'Stop'
+
+# Use Import-Module with an absolute path so this works from any temp directory.
+Import-Module '$_derekhModulePath' -Force -DisableNameChecking
+
+`$plan = @{
+    Title    = 'D2 Test Plan'
+    Subtitle = '00:00:00'
+    Phases   = @(
+        @{
+            Name   = 'Clone repos'
+            Type   = 'loop'
+            Items  = @('api', 'web')
+            Action = {
+                param(`$item)
+                return @{ Success = `$true; Message = "`$item ok" }
+            }
+        }
+    )
+}
+
+Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '2026-01-01T00:00:00Z'
+"@
+
+$helperPath = Join-Path $env:TEMP "dh-d2-helper-$(Get-Random).ps1"
+Set-Content -Path $helperPath -Value $helperScript -Encoding UTF8
+
+try {
+    $output   = pwsh -NoProfile -File $helperPath -Headless 2>&1
+    $exitCode = $LASTEXITCODE
+
+    Assert-Equal "D2: process exits 0"          0              $exitCode
+    Assert-True  "D2: stdout is non-empty"       ($output.Length -gt 0)
+
+    $parsed3 = $output | ConvertFrom-Json -AsHashtable
+    Assert-True  "D2: parsed is object"          ($null -ne $parsed3)
+    Assert-Equal "D2: title field"               "D2 Test Plan"  $parsed3.title
+    Assert-Equal "D2: phases count"              1               $parsed3.phases.Count
+    Assert-Equal "D2: phase[0].name"             "Clone repos"   $parsed3.phases[0].name
+    Assert-Equal "D2: phase[0].items count"      2               $parsed3.phases[0].items.Count
+    Assert-Equal "D2: phase[0].items[0].status"  "ok"            $parsed3.phases[0].items[0].status
+    Assert-Equal "D2: exit_code field"           0               $parsed3.exit_code
+    Assert-True  "D2: no ANSI in stdout"         (-not ($output -match '\x1b\['))
+} finally {
+    Remove-Item -Path $helperPath -ErrorAction SilentlyContinue
+}
+
+# ── Final result (updated after each task appends) ───────────────────────────
 if ($failures -gt 0) {
     Write-Host "`n$failures test(s) failed." -ForegroundColor Red
     exit 1
 } else {
-    Write-Host "`nAll D1 unit tests passed." -ForegroundColor Green
+    Write-Host "`nAll headless tests passed." -ForegroundColor Green
+    exit 0
 }

@@ -7,8 +7,6 @@
 #   ConvertTo-DhStateJson -State <hashtable> [-OverrideStartedAt <string>] [-OverrideCompletedAt <string>]
 #     -> [string] JSON
 
-Set-StrictMode -Version Latest
-
 function ConvertTo-DhStateJson {
     <#
     .SYNOPSIS
