@@ -25,6 +25,29 @@
         'Get-DhThemeColor'
         'Get-DhThemeGlyph'
         'Test-DhTheme'
+        # Render primitives (Phase F1)
+        'Initialize-DhTui'
+        'Stop-DhTui'
+        'Set-DhCursor'
+        'Clear-DhRegion'
+        'Write-DhAt'
+        # Region drawers (Phase F2)
+        'Render-DhHeader'
+        'Render-DhPhasesPane'
+        'Render-DhActivePane'
+        'Render-DhIssuesPane'
+        'Render-DhFooter'
+        # Input handling (Phase F3)
+        'Test-DhKeyAvailable'
+        'Read-DhKey'
+        'Register-DhKeyHandler'
+        'Unregister-DhKeyHandler'
+        'Get-DhKeyHandlers'
+        'Clear-DhKeyHandlers'
+        'Invoke-DhKeyDispatch'
+        # Clipboard (Phase F4)
+        'Test-DhClipboardAvailable'
+        'Set-DhClipboard'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
