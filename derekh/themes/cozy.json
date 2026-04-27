@@ -1,0 +1,83 @@
+{
+  "$schema": "../theme-schema.json",
+  "name": "cozy",
+  "description": "Cozy Farmhouse — warm wood-brown background, parchment text, harvest-gold accents",
+
+  "palette": {
+    "bg":        "#2b1f15",
+    "bg_alt":    "#3a2a1a",
+    "fg":        "#f0e5cc",
+    "frame":     "#b8884a",
+    "title":     "#f8d97a",
+    "accent":    "#e8a248",
+    "ok":        "#b9d977",
+    "warn":      "#f0b649",
+    "fail":      "#d96552",
+    "running":   "#8ec0e0",
+    "pending":   "#7a6a4a",
+    "dim":       "#a08c64",
+    "chip_bg":   "#3a2a1a"
+  },
+
+  "glyphs": {
+    "phase_pending":   "○",
+    "phase_running":   "◐",
+    "phase_ok":        "✓",
+    "phase_fail":      "✗",
+    "phase_warn":      "⚠",
+    "spinner_frames":  ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"],
+    "progress_filled": "▰",
+    "progress_empty":  "▱",
+    "progress_partial": "▱",
+    "frame_tl": "╭", "frame_tr": "╮",
+    "frame_bl": "╰", "frame_br": "╯",
+    "frame_h":  "─", "frame_v":  "│",
+    "frame_t":  "┬", "frame_b":  "┴", "frame_l": "├", "frame_r": "┤",
+    "icon_title":  "🌾",
+    "icon_done":   "✨",
+    "icon_alert":  "⚠"
+  },
+
+  "sections": {
+    "header": {
+      "title_format": "{icon_title} {title}",
+      "show_subtitle": true,
+      "show_progress_bar": true,
+      "progress_bar_width": 20
+    },
+    "phases_pane": {
+      "min_width": 24,
+      "max_width": 32,
+      "show_phase_progress": true
+    },
+    "active_pane": {
+      "show_spinner": true,
+      "show_elapsed": true
+    },
+    "issues_pane": {
+      "max_visible": 8,
+      "auto_scroll": true,
+      "show_indices": true
+    },
+    "footer": {
+      "show_keybinds": true,
+      "keybind_format": "[{key}] {label}"
+    }
+  },
+
+  "ascii_fallback": {
+    "enabled": true,
+    "phase_pending":   "[ ]",
+    "phase_running":   "[~]",
+    "phase_ok":        "[+]",
+    "phase_fail":      "[!]",
+    "phase_warn":      "[?]",
+    "spinner_frames":  ["|","/","-","\\"],
+    "progress_filled": "#",
+    "progress_empty":  "-",
+    "frame_tl": "+", "frame_tr": "+",
+    "frame_bl": "+", "frame_br": "+",
+    "frame_h":  "-", "frame_v":  "|",
+    "frame_t":  "+", "frame_b":  "+", "frame_l": "+", "frame_r": "+"
+  }
+}

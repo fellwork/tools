@@ -114,6 +114,111 @@ Assert-True ($phasesSection.max_width -ge $phasesSection.min_width) "phases_pane
 Assert-Equal 24 $phasesSection.min_width "phases_pane min_width = 24"
 Assert-Equal 32 $phasesSection.max_width "phases_pane max_width = 32"
 
+# ─── Phase C1: Resolve-DhTheme ───────────────────────────────────────────────
+
+# Returns CLI flag when all three levels are set
+Assert-Equal "cozy" (Resolve-DhTheme -CliFlag "cozy" -PlanField "twilight") "Resolve-DhTheme: CLI flag wins when all set"
+
+# Returns plan field when CLI flag is empty string
+Assert-Equal "cozy" (Resolve-DhTheme -CliFlag "" -PlanField "cozy") "Resolve-DhTheme: plan field when CLI flag is empty"
+
+# Returns plan field when CLI flag is null
+Assert-Equal "cozy" (Resolve-DhTheme -CliFlag $null -PlanField "cozy") "Resolve-DhTheme: plan field when CLI flag is null"
+
+# Returns default when both CLI flag and plan field are empty
+Assert-Equal "twilight" (Resolve-DhTheme -CliFlag "" -PlanField "") "Resolve-DhTheme: default when both absent (empty strings)"
+
+# Returns default when both are null
+Assert-Equal "twilight" (Resolve-DhTheme -CliFlag $null -PlanField $null) "Resolve-DhTheme: default when both null"
+
+# Trims whitespace before treating a value as present (CLI flag is whitespace → skip to plan field)
+Assert-Equal "cozy" (Resolve-DhTheme -CliFlag "  " -PlanField "cozy") "Resolve-DhTheme: trims whitespace — CLI flag of spaces skips to plan field"
+
+# Never returns null or empty
+$r = Resolve-DhTheme -CliFlag $null -PlanField $null
+Assert-True (-not [string]::IsNullOrEmpty($r)) "Resolve-DhTheme: never returns null or empty"
+
+# Pending integration test for Invoke-DhPlan (Phase D wires this)
+Write-Host "PASS: Invoke-DhPlan theme resolution — PENDING (Phase D)" -ForegroundColor DarkYellow
+
+# ─── Phase C2: cozy theme file ───────────────────────────────────────────────
+
+# Loads without error
+$cozythrew = $false
+try { $cozy = Get-DhTheme -Name "cozy" } catch { $cozythrew = $true }
+Assert-True (-not $cozythrew) "cozy theme: loads without error via Get-DhTheme"
+
+$cozy = Get-DhTheme -Name "cozy" -Force
+
+# Correct name field
+Assert-Equal "cozy" $cozy.name "cozy theme: name field is 'cozy'"
+
+# Test-DhTheme -Name validation (string overload)
+$cozyValid = Test-DhTheme -Name "cozy"
+Assert-Equal $true $cozyValid "cozy theme: passes Test-DhTheme -Name validation"
+
+# All required palette keys
+foreach ($key in @("bg","bg_alt","fg","frame","title","accent","ok","warn","fail","running","pending","dim","chip_bg")) {
+    Assert-True ($cozy.palette.ContainsKey($key)) "cozy theme: palette has key '$key'"
+}
+
+# Palette values are valid hex colors
+foreach ($prop in $cozy.palette.Keys) {
+    $val = $cozy.palette[$prop]
+    Assert-True ($val -match '^#[0-9a-fA-F]{6}$') "cozy theme: palette.$prop is valid hex ($val)"
+}
+
+# Correct bg color from brainstorm palette
+Assert-Equal "#2b1f15" $cozy.palette.bg "cozy theme: bg = #2b1f15"
+
+# Correct fg color from brainstorm palette
+Assert-Equal "#f0e5cc" $cozy.palette.fg "cozy theme: fg = #f0e5cc"
+
+# ─── Phase C2: twilight still valid after cozy added ────────────────────────
+
+$twilightThrew = $false
+try { $tw = Get-DhTheme -Name "twilight" -Force } catch { $twilightThrew = $true }
+Assert-True (-not $twilightThrew) "twilight still valid: loads without error"
+
+$twValid = Test-DhTheme -Name "twilight"
+Assert-Equal $true $twValid "twilight still valid: passes Test-DhTheme -Name validation"
+
+foreach ($key in @("bg","bg_alt","fg","frame","title","accent","ok","warn","fail","running","pending","dim","chip_bg")) {
+    Assert-True ($tw.palette.ContainsKey($key)) "twilight still valid: palette has key '$key'"
+}
+
+# ─── Phase C2: Get-DhAvailableThemes ────────────────────────────────────────
+
+$themes = Get-DhAvailableThemes
+
+# Returns strings
+Assert-True ($themes -ne $null -and $themes.Count -gt 0) "Get-DhAvailableThemes: returns non-empty result"
+foreach ($t in $themes) {
+    Assert-True ($t -is [string]) "Get-DhAvailableThemes: '$t' is a string"
+}
+
+# Includes twilight
+Assert-True ($themes -contains "twilight") "Get-DhAvailableThemes: includes 'twilight'"
+
+# Includes cozy
+Assert-True ($themes -contains "cozy") "Get-DhAvailableThemes: includes 'cozy'"
+
+# Returns at least two themes
+Assert-True ($themes.Count -ge 2) "Get-DhAvailableThemes: returns at least 2 themes"
+
+# Returns names without .json extension
+foreach ($t in $themes) {
+    Assert-True ($t -notmatch '\.json$') "Get-DhAvailableThemes: '$t' has no .json extension"
+}
+
+# Returns results in sorted order
+$sorted = $themes | Sort-Object
+$isSorted = $true
+for ($i = 0; $i -lt $themes.Count; $i++) {
+    if ($themes[$i] -ne $sorted[$i]) { $isSorted = $false; break }
+}
+Assert-True $isSorted "Get-DhAvailableThemes: results are in sorted order"
+
 if ($failures -eq 0) {
     Write-Host "`nAll theme tests passed." -ForegroundColor Green
     exit 0

@@ -19,6 +19,12 @@
         'Get-DhTheme'
         'Get-DhVersion'
         'Test-DhEnvironment'
+        # Theme helpers (Phase C)
+        'Resolve-DhTheme'
+        'Get-DhAvailableThemes'
+        'Get-DhThemeColor'
+        'Get-DhThemeGlyph'
+        'Test-DhTheme'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()

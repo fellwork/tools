@@ -78,9 +78,20 @@ function Get-DhThemeGlyph {
 
 function Test-DhTheme {
     param(
-        [Parameter(Mandatory)]
-        [hashtable]$Theme
+        [hashtable]$Theme,
+        [string]$Name
     )
+
+    # If -Name is supplied, load the theme by name and return a simple bool
+    if (-not [string]::IsNullOrEmpty($Name)) {
+        $loaded = Get-DhTheme -Name $Name
+        $result = Test-DhTheme -Theme $loaded
+        return $result.Valid
+    }
+
+    if ($null -eq $Theme) {
+        throw "Test-DhTheme: Either -Theme or -Name must be provided"
+    }
 
     $errors = [System.Collections.ArrayList]@()
 
@@ -119,4 +130,52 @@ function Test-DhTheme {
         Valid  = ($errors.Count -eq 0)
         Errors = @($errors)
     }
+}
+
+function Resolve-DhTheme {
+    <#
+    .SYNOPSIS
+        Resolves the effective theme name from a three-level precedence chain.
+    .DESCRIPTION
+        Precedence (highest to lowest):
+          1. -CliFlag   (e.g. -Theme passed to Invoke-DhPlan)
+          2. -PlanField (plan.Theme set via New-DhPlan -Theme)
+          3. -Default   (built-in fallback, defaults to "twilight")
+        An empty or whitespace-only value at any level is treated as absent.
+    .OUTPUTS
+        [string] — the resolved theme name; never null or empty.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$CliFlag,
+        [string]$PlanField,
+        [string]$Default = "twilight"
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($CliFlag)) {
+        return $CliFlag.Trim()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PlanField)) {
+        return $PlanField.Trim()
+    }
+    return $Default
+}
+
+function Get-DhAvailableThemes {
+    <#
+    .SYNOPSIS
+        Returns the names of all themes discoverable in the themes/ directory.
+    .OUTPUTS
+        [string[]] — sorted array of theme names (filename without .json extension)
+    #>
+    [CmdletBinding()]
+    param()
+
+    $themesDir = Join-Path $PSScriptRoot ".." "themes"
+    if (-not (Test-Path $themesDir)) {
+        return @()
+    }
+    Get-ChildItem -Path $themesDir -Filter "*.json" |
+        Sort-Object Name |
+        ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_.Name) }
 }
