@@ -1,0 +1,53 @@
+{
+  "version": "0.1.0",
+  "title": "All Success",
+  "subtitle": "00:00:00",
+  "started_at": "__TIMESTAMP__",
+  "completed_at": "__TIMESTAMP__",
+  "exit_code": 0,
+  "phases": [
+    {
+      "name": "Clone repos",
+      "type": "loop",
+      "status": "ok",
+      "items": [
+        {
+          "name": "api",
+          "status": "ok",
+          "message": "api cloned"
+        },
+        {
+          "name": "web",
+          "status": "ok",
+          "message": "web cloned"
+        }
+      ]
+    },
+    {
+      "name": "Check tools",
+      "type": "loop",
+      "status": "ok",
+      "items": [
+        {
+          "name": "git",
+          "status": "ok",
+          "message": "git ok"
+        },
+        {
+          "name": "node",
+          "status": "ok",
+          "message": "node ok"
+        }
+      ]
+    }
+  ],
+  "issues": [],
+  "summary": {
+    "phases_total": 2,
+    "phases_ok": 2,
+    "phases_failed": 0,
+    "issues_total": 0,
+    "warnings": 0,
+    "failures": 0
+  }
+}

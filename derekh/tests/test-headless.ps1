@@ -185,11 +185,209 @@ try {
     Remove-Item -Path $helperPath -ErrorAction SilentlyContinue
 }
 
-# ── Final result (updated after each task appends) ───────────────────────────
-if ($failures -gt 0) {
-    Write-Host "`n$failures test(s) failed." -ForegroundColor Red
-    exit 1
-} else {
+# ── D3: Snapshot integration tests ───────────────────────────────────────────
+
+$FIXED_TS          = "2026-01-01T00:00:00Z"
+# Absolute path injected into each subprocess script so it works from $env:TEMP
+$_derekhModPath    = (Resolve-Path "$moduleRoot/derekh.psm1").Path -replace '\\', '/'
+
+function Invoke-HeadlessScenario {
+    param(
+        [Parameter(Mandatory)][string]$ScriptContent
+    )
+    $tmpScript = Join-Path $env:TEMP "dh-d3-$(Get-Random).ps1"
+    Set-Content -Path $tmpScript -Value $ScriptContent -Encoding UTF8
+    try {
+        $raw      = pwsh -NoProfile -File $tmpScript 2>&1
+        $exitCode = $LASTEXITCODE
+        return @{ Output = ($raw -join "`n"); ExitCode = $exitCode }
+    } finally {
+        Remove-Item -Path $tmpScript -ErrorAction SilentlyContinue
+    }
+}
+
+function Normalize-HeadlessJson {
+    param([string]$Json)
+    # Replace timestamp values with a sentinel for stable comparison
+    return $Json -replace '"started_at"\s*:\s*"[^"]*"',   '"started_at": "__TIMESTAMP__"' `
+                 -replace '"completed_at"\s*:\s*"[^"]*"', '"completed_at": "__TIMESTAMP__"'
+}
+
+function Compare-HeadlessSnapshot {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$ActualJson
+    )
+    $goldenPath = Join-Path $snapshotDir "headless-$Name.json"
+    $normalized = Normalize-HeadlessJson $ActualJson
+
+    if ($UpdateGoldens -or -not (Test-Path $goldenPath)) {
+        Set-Content -Path $goldenPath -Value $normalized -Encoding UTF8 -NoNewline
+        Write-Host "GOLDEN: $Name -- written to $goldenPath" -ForegroundColor Cyan
+        return
+    }
+
+    $expected = Get-Content -Path $goldenPath -Raw -Encoding UTF8
+    # Normalize line endings
+    $expected   = $expected   -replace "`r`n", "`n"
+    $normalized = $normalized -replace "`r`n", "`n"
+
+    if ($expected.TrimEnd() -eq $normalized.TrimEnd()) {
+        Write-Host "PASS: snapshot $Name" -ForegroundColor Green
+    } else {
+        Write-Host "FAIL: snapshot $Name -- mismatch" -ForegroundColor Red
+        Write-Host "--- Expected ---" -ForegroundColor Cyan
+        Write-Host $expected
+        Write-Host "--- Actual ---" -ForegroundColor Cyan
+        Write-Host $normalized
+        $script:failures++
+    }
+}
+
+# Ensure snapshots directory exists
+if (-not (Test-Path $snapshotDir)) { $null = New-Item -ItemType Directory -Path $snapshotDir }
+
+# ── Scenario: all-success ─────────────────────────────────────────────────────
+$allSuccessScript = @"
+`$ErrorActionPreference = 'Stop'
+Import-Module '$_derekhModPath' -Force -DisableNameChecking
+`$plan = @{
+    Title    = 'All Success'
+    Subtitle = '00:00:00'
+    Phases   = @(
+        @{ Name='Clone repos'; Type='loop'; Items=@('api','web')
+           Action={ param(`$item); @{ Success=`$true; Message="`$item cloned" } } }
+        @{ Name='Check tools'; Type='loop'; Items=@('git','node')
+           Action={ param(`$item); @{ Success=`$true; Message="`$item ok" } } }
+    )
+}
+Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+"@
+
+$result = Invoke-HeadlessScenario -ScriptContent $allSuccessScript
+Assert-Equal "D3: all-success exit code"         0  $result.ExitCode
+$parsedAs = $result.Output | ConvertFrom-Json -AsHashtable
+Assert-Equal "D3: all-success exit_code field"   0  $parsedAs.exit_code
+Assert-Equal "D3: all-success phases count"      2  $parsedAs.phases.Count
+Assert-Equal "D3: all-success issues count"      0  $parsedAs.issues.Count
+Compare-HeadlessSnapshot -Name "all-success" -ActualJson $result.Output
+
+# ── Scenario: all-fail ────────────────────────────────────────────────────────
+$allFailScript = @"
+`$ErrorActionPreference = 'Stop'
+Import-Module '$_derekhModPath' -Force -DisableNameChecking
+`$plan = @{
+    Title  = 'All Fail'
+    Phases = @(
+        @{ Name='Install deps'; Type='loop'; Items=@('pkg-a','pkg-b')
+           Action={ param(`$item)
+               @{ Success=`$false; Severity='fail'; Message="`$item failed"
+                  FixCommand="npm install `$item" } } }
+    )
+}
+Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+"@
+
+$result = Invoke-HeadlessScenario -ScriptContent $allFailScript
+Assert-Equal "D3: all-fail exit code"            2  $result.ExitCode
+$parsedAf = $result.Output | ConvertFrom-Json -AsHashtable
+Assert-Equal "D3: all-fail exit_code field"      2  $parsedAf.exit_code
+Assert-Equal "D3: all-fail issues count"         2  $parsedAf.issues.Count
+Assert-Equal "D3: all-fail summary.failures"     2  $parsedAf.summary.failures
+Assert-Equal "D3: all-fail summary.phases_failed" 1 $parsedAf.summary.phases_failed
+Compare-HeadlessSnapshot -Name "all-fail" -ActualJson $result.Output
+
+# ── Scenario: mixed-alerts ────────────────────────────────────────────────────
+$mixedScript = @"
+`$ErrorActionPreference = 'Stop'
+Import-Module '$_derekhModPath' -Force -DisableNameChecking
+`$plan = @{
+    Title  = 'Mixed Alerts'
+    Phases = @(
+        @{ Name='Clone repos'; Type='loop'; Items=@('api')
+           Action={ param(`$item); @{ Success=`$true; Message="`$item ok" } } }
+        @{ Name='Prereqs'; Type='single'
+           Action={
+               @{ Success=`$true
+                  Alerts=@(
+                      @{ Severity='warning'; Message='wrangler not installed'
+                         FixCommand='npm install -g wrangler' }
+                  ) }
+           } }
+    )
+}
+Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+"@
+
+$result = Invoke-HeadlessScenario -ScriptContent $mixedScript
+Assert-Equal "D3: mixed-alerts exit code"         1  $result.ExitCode
+$parsedMx = $result.Output | ConvertFrom-Json -AsHashtable
+Assert-Equal "D3: mixed-alerts exit_code field"   1  $parsedMx.exit_code
+Assert-Equal "D3: mixed-alerts issues count"      1  $parsedMx.issues.Count
+Assert-Equal "D3: mixed-alerts issue[0].severity" "warning" $parsedMx.issues[0].severity
+Assert-Equal "D3: mixed-alerts summary.warnings"  1  $parsedMx.summary.warnings
+Assert-Equal "D3: mixed-alerts summary.failures"  0  $parsedMx.summary.failures
+Compare-HeadlessSnapshot -Name "mixed-alerts" -ActualJson $result.Output
+
+# ── Scenario: single-shot ─────────────────────────────────────────────────────
+$singleScript = @"
+`$ErrorActionPreference = 'Stop'
+Import-Module '$_derekhModPath' -Force -DisableNameChecking
+`$plan = @{
+    Title  = 'Single Shot'
+    Phases = @(
+        @{ Name='System check'; Type='single'
+           Action={
+               @{ Success=`$false; Severity='warning'; Message='node version old'
+                  FixCommand='proto install node' }
+           } }
+    )
+}
+Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+"@
+
+$result = Invoke-HeadlessScenario -ScriptContent $singleScript
+Assert-Equal "D3: single-shot exit code"         1  $result.ExitCode
+$parsedSs = $result.Output | ConvertFrom-Json -AsHashtable
+Assert-Equal "D3: single-shot phases count"      1  $parsedSs.phases.Count
+Assert-Equal "D3: single-shot phase[0].type"     "single" $parsedSs.phases[0].type
+Assert-Equal "D3: single-shot phase[0].items"    0  $parsedSs.phases[0].items.Count
+Assert-Equal "D3: single-shot issues count"      1  $parsedSs.issues.Count
+Compare-HeadlessSnapshot -Name "single-shot" -ActualJson $result.Output
+
+# ── Scenario: empty plan ──────────────────────────────────────────────────────
+$emptyScript = @"
+`$ErrorActionPreference = 'Stop'
+Import-Module '$_derekhModPath' -Force -DisableNameChecking
+`$plan = @{ Title = 'Empty'; Phases = @() }
+Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+"@
+
+$result = Invoke-HeadlessScenario -ScriptContent $emptyScript
+Assert-Equal "D3: empty exit code"               0  $result.ExitCode
+$parsedEm = $result.Output | ConvertFrom-Json -AsHashtable
+Assert-Equal "D3: empty exit_code field"         0  $parsedEm.exit_code
+Assert-Equal "D3: empty phases count"            0  $parsedEm.phases.Count
+Assert-Equal "D3: empty issues count"            0  $parsedEm.issues.Count
+Assert-Equal "D3: empty summary.phases_total"    0  $parsedEm.summary.phases_total
+Compare-HeadlessSnapshot -Name "empty" -ActualJson $result.Output
+
+# ── ANSI guard: none of the snapshots contain escape codes ────────────────────
+$allScenarios = @("all-success", "all-fail", "mixed-alerts", "single-shot", "empty")
+foreach ($s in $allScenarios) {
+    $goldenPath = Join-Path $snapshotDir "headless-$s.json"
+    if (Test-Path $goldenPath) {
+        $content = Get-Content -Path $goldenPath -Raw
+        Assert-True "D3: no ANSI in headless-$s.json" (-not ($content -match '\x1b\['))
+    }
+}
+
+# ── Final result ──────────────────────────────────────────────────────────────
+if ($failures -eq 0) {
     Write-Host "`nAll headless tests passed." -ForegroundColor Green
     exit 0
+} else {
+    Write-Host "`n$failures test(s) failed." -ForegroundColor Red
+    Write-Host "To regenerate goldens: pwsh -NoProfile -File tests/test-headless.ps1 -UpdateGoldens" -ForegroundColor Yellow
+    exit 1
 }

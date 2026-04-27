@@ -1,0 +1,46 @@
+{
+  "version": "0.1.0",
+  "title": "Mixed Alerts",
+  "subtitle": "",
+  "started_at": "__TIMESTAMP__",
+  "completed_at": "__TIMESTAMP__",
+  "exit_code": 1,
+  "phases": [
+    {
+      "name": "Clone repos",
+      "type": "loop",
+      "status": "ok",
+      "items": [
+        {
+          "name": "api",
+          "status": "ok",
+          "message": "api ok"
+        }
+      ]
+    },
+    {
+      "name": "Prereqs",
+      "type": "single",
+      "status": "ok",
+      "items": []
+    }
+  ],
+  "issues": [
+    {
+      "phase": "Prereqs",
+      "severity": "warning",
+      "message": "wrangler not installed",
+      "fix_command": "npm install -g wrangler",
+      "animal": "owl",
+      "log_tail": null
+    }
+  ],
+  "summary": {
+    "phases_total": 2,
+    "phases_ok": 2,
+    "phases_failed": 0,
+    "issues_total": 1,
+    "warnings": 1,
+    "failures": 0
+  }
+}

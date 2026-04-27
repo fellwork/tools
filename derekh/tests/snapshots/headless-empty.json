@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "title": "Empty",
+  "subtitle": "",
+  "started_at": "__TIMESTAMP__",
+  "completed_at": "__TIMESTAMP__",
+  "exit_code": 0,
+  "phases": [],
+  "issues": [],
+  "summary": {
+    "phases_total": 0,
+    "phases_ok": 0,
+    "phases_failed": 0,
+    "issues_total": 0,
+    "warnings": 0,
+    "failures": 0
+  }
+}

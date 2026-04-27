@@ -1,0 +1,34 @@
+{
+  "version": "0.1.0",
+  "title": "Single Shot",
+  "subtitle": "",
+  "started_at": "__TIMESTAMP__",
+  "completed_at": "__TIMESTAMP__",
+  "exit_code": 1,
+  "phases": [
+    {
+      "name": "System check",
+      "type": "single",
+      "status": "fail",
+      "items": []
+    }
+  ],
+  "issues": [
+    {
+      "phase": "System check",
+      "severity": "warning",
+      "message": "node version old",
+      "fix_command": "proto install node",
+      "animal": "owl",
+      "log_tail": null
+    }
+  ],
+  "summary": {
+    "phases_total": 1,
+    "phases_ok": 0,
+    "phases_failed": 1,
+    "issues_total": 1,
+    "warnings": 1,
+    "failures": 0
+  }
+}
