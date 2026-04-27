@@ -1,0 +1,41 @@
+
+────────────────────────────────────────────────────────────
+  🌙 Test Plan                                      00:00:00
+────────────────────────────────────────────────────────────
+
+
+── Clone repos ─────────────────────────────────────────────
+├─ ✓ api               api cloned
+├─ ✓ web               web cloned
+╰─ ✗ ops               clone failed
+
+
+── Other prereqs ───────────────────────────────────────────
+  ✓ Other prereqs  (1/1)
+
+
+── Summary ─────────────────────────────────────────────────
+
+  ✗  1 / 2 phases completed
+  ⚠  1 warning(s)
+  ✗  1 failure(s)
+
+── Issues ──────────────────────────────────────────────────
+
+  [1] ✗ clone failed  (fail)
+      Fix: git clone https://github.com/fellwork/ops.git
+
+  [2] ⚠ wrangler is not installed  (warning)
+      Fix: npm install -g wrangler
+
+── Suggested next steps ────────────────────────────────────
+
+  Run these commands, then rerun to verify:
+
+   1. ✗  clone failed
+      git clone https://github.com/fellwork/ops.git
+
+   2. ⚠  wrangler is not installed
+      npm install -g wrangler
+
+🦉  [owl/pro-tip]

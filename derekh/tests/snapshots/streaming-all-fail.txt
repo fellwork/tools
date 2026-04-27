@@ -1,0 +1,35 @@
+
+────────────────────────────────────────────────────────────
+  🌙 Test Plan                                      00:00:00
+────────────────────────────────────────────────────────────
+
+
+── Clone repos ─────────────────────────────────────────────
+├─ ✗ api               clone failed (exit 128)
+╰─ ✗ web               clone failed (exit 128)
+
+
+── Summary ─────────────────────────────────────────────────
+
+  ✗  0 / 1 phases completed
+  ✗  2 failure(s)
+
+── Issues ──────────────────────────────────────────────────
+
+  [1] ✗ clone failed (exit 128)  (fail)
+      Fix: git clone https://github.com/fellwork/api.git
+
+  [2] ✗ clone failed (exit 128)  (fail)
+      Fix: git clone https://github.com/fellwork/web.git
+
+── Suggested next steps ────────────────────────────────────
+
+  Run these commands, then rerun to verify:
+
+   1. ✗  clone failed (exit 128)
+      git clone https://github.com/fellwork/api.git
+
+   2. ✗  clone failed (exit 128)
+      git clone https://github.com/fellwork/web.git
+
+🦉  [owl/pro-tip]

@@ -1,0 +1,22 @@
+
+────────────────────────────────────────────────────────────
+  🌙 Test Plan                                      00:00:00
+────────────────────────────────────────────────────────────
+
+
+── Clone repos ─────────────────────────────────────────────
+├─ ✓ api               api cloned
+├─ ✓ web               web cloned
+╰─ ✓ ops               ops cloned
+
+
+── Proto install ───────────────────────────────────────────
+├─ ✓ api               api tools installed
+├─ ✓ web               web tools installed
+╰─ ✓ ops               ops tools installed
+
+
+── Summary ─────────────────────────────────────────────────
+
+  ✓  2 / 2 phases completed
+🦦  [otter/celebrate]
