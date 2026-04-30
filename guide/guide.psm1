@@ -1,4 +1,4 @@
-# Derekh — TUI framework for Fellwork CLI tools.
+# Guide — TUI framework for Fellwork CLI tools.
 # Module entry: dot-sources every file in lib/ and re-exports the public API.
 
 # Dot-source lib files in dependency order.
@@ -9,11 +9,11 @@ if (Test-Path $_libDir) {
     }
 }
 
-# Get-DhVersion is the only Phase A function — gives the test suite a real
+# Get-GuideVersion is the only Phase A function — gives the test suite a real
 # passing assertion before any Phase B logic exists.
 
-function Get-DhVersion {
-    $manifestPath = Join-Path $PSScriptRoot 'derekh.psd1'
+function Get-GuideVersion {
+    $manifestPath = Join-Path $PSScriptRoot 'guide.psd1'
     if (-not (Test-Path $manifestPath)) {
         throw "Module manifest missing at $manifestPath"
     }
@@ -21,10 +21,10 @@ function Get-DhVersion {
     return $data.ModuleVersion
 }
 
-function Invoke-DhPlan {
+function Invoke-GuidePlan {
     <#
     .SYNOPSIS
-        Run a Derekh plan. The primary public entry point for all consumers.
+        Run a Guide plan. The primary public entry point for all consumers.
 
     .PARAMETER Plan
         A hashtable describing the plan: Title, Subtitle, Theme, Phases.
@@ -94,32 +94,32 @@ function Invoke-DhPlan {
     $useHeadless  = $headlessBool -or $autoHeadless
 
     # ── Validate plan ─────────────────────────────────────────────────────────
-    $validation = Test-DhPlan -Plan $Plan
+    $validation = Test-GuidePlan -Plan $Plan
     if (-not $validation.Valid) {
-        $msg = "Invoke-DhPlan: plan validation failed:`n" + ($validation.Errors -join "`n")
+        $msg = "Invoke-GuidePlan: plan validation failed:`n" + ($validation.Errors -join "`n")
         throw $msg
     }
 
     # ── Build initial state ───────────────────────────────────────────────────
     $title    = if ($Plan.ContainsKey('Title'))    { $Plan.Title }    else { '' }
     $subtitle = if ($Plan.ContainsKey('Subtitle')) { $Plan.Subtitle } else { '' }
-    $state    = New-DhState -Title $title -Subtitle $subtitle
+    $state    = New-GuideState -Title $title -Subtitle $subtitle
 
     # Record start time now (before phases run)
     $state.StartedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
-    # Pre-register all phases in state so Invoke-DhPlanPhases can find them
+    # Pre-register all phases in state so Invoke-GuidePlanPhases can find them
     foreach ($phase in $Plan.Phases) {
         $phaseType = if ($phase.ContainsKey('Type')) { $phase.Type } else { 'loop' }
-        Add-DhStatePhase -State $state -Name $phase.Name -Type $phaseType
+        Add-GuideStatePhase -State $state -Name $phase.Name -Type $phaseType
     }
 
     # ── Headless path ─────────────────────────────────────────────────────────
     if ($useHeadless) {
         # Run all phases; plan.ps1 records everything into state.
-        # Pipe return value to $null — Invoke-DhPlanPhases returns an exit code
+        # Pipe return value to $null — Invoke-GuidePlanPhases returns an exit code
         # integer that must not appear in headless JSON stdout.
-        Invoke-DhPlanPhases -Plan $Plan -State $state | Out-Null
+        Invoke-GuidePlanPhases -Plan $Plan -State $state | Out-Null
 
         # Record completion time
         $state.CompletedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -133,7 +133,7 @@ function Invoke-DhPlan {
         # Serialize to JSON; -FixedTimeForTests overrides timestamps for stable test output
         $overrideStart = if ($FixedTimeForTests) { $FixedTimeForTests } else { '' }
         $overrideEnd   = if ($FixedTimeForTests) { $FixedTimeForTests } else { '' }
-        $json = ConvertTo-DhStateJson -State $state `
+        $json = ConvertTo-GuideStateJson -State $state `
                     -OverrideStartedAt  $overrideStart `
                     -OverrideCompletedAt $overrideEnd
 
@@ -147,11 +147,11 @@ function Invoke-DhPlan {
         $colorEnabled = (-not $NoColor.IsPresent) -and [string]::IsNullOrEmpty($env:NO_COLOR)
 
         # Resolve theme
-        $themeName    = Resolve-DhTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
-        $resolvedTheme = Get-DhTheme -Name $themeName
+        $themeName    = Resolve-GuideTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
+        $resolvedTheme = Get-GuideTheme -Name $themeName
 
         # Emit plan-started banner
-        Invoke-DhStreamingRender -Event @{
+        Invoke-GuideStreamingRender -Event @{
             Type     = 'plan-started'
             Theme    = $resolvedTheme
             Title    = $Plan.Title
@@ -167,7 +167,7 @@ function Invoke-DhPlan {
             $phaseType = if ($planPhase.ContainsKey('Type')) { $planPhase.Type } else { 'loop' }
 
             # phase-started event
-            Invoke-DhStreamingRender -Event @{
+            Invoke-GuideStreamingRender -Event @{
                 Type       = 'phase-started'
                 Theme      = $resolvedTheme
                 PhaseName  = $planPhase.Name
@@ -176,7 +176,7 @@ function Invoke-DhPlan {
                 PhaseTotal = $phaseTotal
             } -ColorEnabled $colorEnabled
 
-            Set-DhStatePhaseStatus -State $state -PhaseName $planPhase.Name -Status 'running'
+            Set-GuideStatePhaseStatus -State $state -PhaseName $planPhase.Name -Status 'running'
             $phaseHadFail = $false
 
             if ($phaseType -eq 'loop') {
@@ -186,7 +186,7 @@ function Invoke-DhPlan {
 
                 foreach ($item in $items) {
                     $itemIdx++
-                    Set-DhStateActive -State $state -Label $item.ToString()
+                    Set-GuideStateActive -State $state -Label $item.ToString()
 
                     $result = $null
                     try {
@@ -194,9 +194,9 @@ function Invoke-DhPlan {
                         if ($null -eq $result -or $result -isnot [hashtable]) {
                             $result = @{ Success = $true; Message = $item.ToString() }
                         }
-                        $result = _Normalize-DhResult -Result $result
+                        $result = _Normalize-GuideResult -Result $result
                     } catch {
-                        $result = _Normalize-DhResult -Result @{
+                        $result = _Normalize-GuideResult -Result @{
                             Success  = $false
                             Message  = $_.Exception.Message
                             Severity = 'fail'
@@ -208,12 +208,12 @@ function Invoke-DhPlan {
                     $itemStatus = if ($result.Success) { 'ok' } else {
                         if ($result.Severity -eq 'warning') { 'warn' } else { 'fail' }
                     }
-                    Add-DhStatePhaseItem -State $state -PhaseName $planPhase.Name `
+                    Add-GuideStatePhaseItem -State $state -PhaseName $planPhase.Name `
                         -ItemName $item.ToString() -Status $itemStatus -Message $result.Message
 
                     if (-not $result.Success) {
                         $phaseHadFail = $true
-                        Add-DhStateIssue -State $state -Phase $planPhase.Name `
+                        Add-GuideStateIssue -State $state -Phase $planPhase.Name `
                             -Severity $result.Severity -Message $result.Message `
                             -FixCommand $result.FixCommand -Animal $result.Animal `
                             -LogTail $result.LogTail
@@ -222,7 +222,7 @@ function Invoke-DhPlan {
                     # Surface alerts from loop items
                     if ($result.Alerts -and $result.Alerts.Count -gt 0) {
                         foreach ($alert in $result.Alerts) {
-                            Add-DhStateIssue -State $state -Phase $planPhase.Name `
+                            Add-GuideStateIssue -State $state -Phase $planPhase.Name `
                                 -Severity $alert.Severity -Message $alert.Message `
                                 -FixCommand $alert.FixCommand
                         }
@@ -231,7 +231,7 @@ function Invoke-DhPlan {
                     # phase-progress event (per item)
                     $sev    = if ($result.Success) { 'ok' } elseif ($result.Severity -eq 'warning') { 'warning' } else { 'fail' }
                     $isLast = ($itemIdx -eq $itemCount)
-                    Invoke-DhStreamingRender -Event @{
+                    Invoke-GuideStreamingRender -Event @{
                         Type      = 'phase-progress'
                         Theme     = $resolvedTheme
                         PhaseName = $planPhase.Name
@@ -243,16 +243,16 @@ function Invoke-DhPlan {
                     } -ColorEnabled $colorEnabled
                 }
 
-                Set-DhStateActive -State $state -Label ''
+                Set-GuideStateActive -State $state -Label ''
                 $statePhase = $state.Phases | Where-Object { $_.Name -eq $planPhase.Name } | Select-Object -First 1
                 $okCount    = @($statePhase.Items | Where-Object { $_.Status -eq 'ok' }).Count
                 $phaseStatus = if ($phaseHadFail) {
                     if ($okCount -gt 0) { 'warn' } else { 'fail' }
                 } else { 'ok' }
-                Set-DhStatePhaseStatus -State $state -PhaseName $planPhase.Name -Status $phaseStatus
+                Set-GuideStatePhaseStatus -State $state -PhaseName $planPhase.Name -Status $phaseStatus
 
                 # phase-completed event (loop phases don't show a single-line status)
-                Invoke-DhStreamingRender -Event @{
+                Invoke-GuideStreamingRender -Event @{
                     Type       = 'phase-completed'
                     Theme      = $resolvedTheme
                     PhaseName  = $planPhase.Name
@@ -263,7 +263,7 @@ function Invoke-DhPlan {
                 } -ColorEnabled $colorEnabled
 
             } elseif ($phaseType -eq 'single') {
-                Set-DhStateActive -State $state -Label $planPhase.Name
+                Set-GuideStateActive -State $state -Label $planPhase.Name
 
                 $result = $null
                 try {
@@ -271,9 +271,9 @@ function Invoke-DhPlan {
                     if ($null -eq $result -or $result -isnot [hashtable]) {
                         $result = @{ Success = $true; Message = $planPhase.Name }
                     }
-                    $result = _Normalize-DhResult -Result $result
+                    $result = _Normalize-GuideResult -Result $result
                 } catch {
-                    $result = _Normalize-DhResult -Result @{
+                    $result = _Normalize-GuideResult -Result @{
                         Success  = $false
                         Message  = $_.Exception.Message
                         Severity = 'fail'
@@ -282,11 +282,11 @@ function Invoke-DhPlan {
                     }
                 }
 
-                Set-DhStateActive -State $state -Label ''
+                Set-GuideStateActive -State $state -Label ''
 
                 if (-not $result.Success) {
                     $phaseHadFail = $true
-                    Add-DhStateIssue -State $state -Phase $planPhase.Name `
+                    Add-GuideStateIssue -State $state -Phase $planPhase.Name `
                         -Severity $result.Severity -Message $result.Message `
                         -FixCommand $result.FixCommand -Animal $result.Animal `
                         -LogTail $result.LogTail
@@ -295,17 +295,17 @@ function Invoke-DhPlan {
                 # Surface alerts even on success
                 if ($result.Alerts -and $result.Alerts.Count -gt 0) {
                     foreach ($alert in $result.Alerts) {
-                        Add-DhStateIssue -State $state -Phase $planPhase.Name `
+                        Add-GuideStateIssue -State $state -Phase $planPhase.Name `
                             -Severity $alert.Severity -Message $alert.Message `
                             -FixCommand $alert.FixCommand
                     }
                 }
 
                 $phaseStatus = if ($phaseHadFail) { 'fail' } else { 'ok' }
-                Set-DhStatePhaseStatus -State $state -PhaseName $planPhase.Name -Status $phaseStatus
+                Set-GuideStatePhaseStatus -State $state -PhaseName $planPhase.Name -Status $phaseStatus
 
                 # phase-completed event
-                Invoke-DhStreamingRender -Event @{
+                Invoke-GuideStreamingRender -Event @{
                     Type       = 'phase-completed'
                     Theme      = $resolvedTheme
                     PhaseName  = $planPhase.Name
@@ -324,7 +324,7 @@ function Invoke-DhPlan {
         $state.CompletedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
         # Emit plan-completed summary
-        Invoke-DhStreamingRender -Event @{
+        Invoke-GuideStreamingRender -Event @{
             Type     = 'plan-completed'
             Theme    = $resolvedTheme
             State    = $state
@@ -338,22 +338,22 @@ function Invoke-DhPlan {
 
     # TUI teardown safety net: any unhandled exception exits the alt buffer.
     trap {
-        Stop-DhTui
+        Stop-GuideTui
         Write-Error $_ -ErrorAction Continue
         exit 2
     }
 
     # Environment check: fall through to streaming if terminal is incapable.
-    $envInfo = Test-DhEnvironment
+    $envInfo = Test-GuideEnvironment
     $useTui  = $envInfo.IsTty -and $envInfo.Fits -and $envInfo.HasColor
 
     if (-not $useTui) {
         # Streaming fallback (same as -NoTui path above).
         $colorEnabled = (-not $NoColor.IsPresent) -and [string]::IsNullOrEmpty($env:NO_COLOR)
-        $themeName2    = Resolve-DhTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
-        $resolvedTheme2 = Get-DhTheme -Name $themeName2
+        $themeName2    = Resolve-GuideTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
+        $resolvedTheme2 = Get-GuideTheme -Name $themeName2
 
-        Invoke-DhStreamingRender -Event @{
+        Invoke-GuideStreamingRender -Event @{
             Type     = 'plan-started'
             Theme    = $resolvedTheme2
             Title    = $Plan.Title
@@ -367,7 +367,7 @@ function Invoke-DhPlan {
             $phaseIndex2++
             $phaseType2 = if ($planPhase2.ContainsKey('Type')) { $planPhase2.Type } else { 'loop' }
 
-            Invoke-DhStreamingRender -Event @{
+            Invoke-GuideStreamingRender -Event @{
                 Type       = 'phase-started'
                 Theme      = $resolvedTheme2
                 PhaseName  = $planPhase2.Name
@@ -376,7 +376,7 @@ function Invoke-DhPlan {
                 PhaseTotal = $phaseTotal2
             } -ColorEnabled $colorEnabled
 
-            Set-DhStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status 'running'
+            Set-GuideStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status 'running'
             $phaseHadFail2 = $false
 
             if ($phaseType2 -eq 'loop') {
@@ -386,7 +386,7 @@ function Invoke-DhPlan {
 
                 foreach ($item2 in $items2) {
                     $itemIdx2++
-                    Set-DhStateActive -State $state -Label $item2.ToString()
+                    Set-GuideStateActive -State $state -Label $item2.ToString()
 
                     $result2 = $null
                     try {
@@ -394,9 +394,9 @@ function Invoke-DhPlan {
                         if ($null -eq $result2 -or $result2 -isnot [hashtable]) {
                             $result2 = @{ Success = $true; Message = $item2.ToString() }
                         }
-                        $result2 = _Normalize-DhResult -Result $result2
+                        $result2 = _Normalize-GuideResult -Result $result2
                     } catch {
-                        $result2 = _Normalize-DhResult -Result @{
+                        $result2 = _Normalize-GuideResult -Result @{
                             Success  = $false
                             Message  = $_.Exception.Message
                             Severity = 'fail'
@@ -408,12 +408,12 @@ function Invoke-DhPlan {
                     $itemStatus2 = if ($result2.Success) { 'ok' } else {
                         if ($result2.Severity -eq 'warning') { 'warn' } else { 'fail' }
                     }
-                    Add-DhStatePhaseItem -State $state -PhaseName $planPhase2.Name `
+                    Add-GuideStatePhaseItem -State $state -PhaseName $planPhase2.Name `
                         -ItemName $item2.ToString() -Status $itemStatus2 -Message $result2.Message
 
                     if (-not $result2.Success) {
                         $phaseHadFail2 = $true
-                        Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                        Add-GuideStateIssue -State $state -Phase $planPhase2.Name `
                             -Severity $result2.Severity -Message $result2.Message `
                             -FixCommand $result2.FixCommand -Animal $result2.Animal `
                             -LogTail $result2.LogTail
@@ -421,7 +421,7 @@ function Invoke-DhPlan {
 
                     if ($result2.Alerts -and $result2.Alerts.Count -gt 0) {
                         foreach ($alert2 in $result2.Alerts) {
-                            Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                            Add-GuideStateIssue -State $state -Phase $planPhase2.Name `
                                 -Severity $alert2.Severity -Message $alert2.Message `
                                 -FixCommand $alert2.FixCommand
                         }
@@ -429,7 +429,7 @@ function Invoke-DhPlan {
 
                     $sev2   = if ($result2.Success) { 'ok' } elseif ($result2.Severity -eq 'warning') { 'warning' } else { 'fail' }
                     $isLast2 = ($itemIdx2 -eq $itemCount2)
-                    Invoke-DhStreamingRender -Event @{
+                    Invoke-GuideStreamingRender -Event @{
                         Type      = 'phase-progress'
                         Theme     = $resolvedTheme2
                         PhaseName = $planPhase2.Name
@@ -441,15 +441,15 @@ function Invoke-DhPlan {
                     } -ColorEnabled $colorEnabled
                 }
 
-                Set-DhStateActive -State $state -Label ''
+                Set-GuideStateActive -State $state -Label ''
                 $statePhase2 = $state.Phases | Where-Object { $_.Name -eq $planPhase2.Name } | Select-Object -First 1
                 $okCount2    = @($statePhase2.Items | Where-Object { $_.Status -eq 'ok' }).Count
                 $phaseStatus2 = if ($phaseHadFail2) {
                     if ($okCount2 -gt 0) { 'warn' } else { 'fail' }
                 } else { 'ok' }
-                Set-DhStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status $phaseStatus2
+                Set-GuideStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status $phaseStatus2
 
-                Invoke-DhStreamingRender -Event @{
+                Invoke-GuideStreamingRender -Event @{
                     Type       = 'phase-completed'
                     Theme      = $resolvedTheme2
                     PhaseName  = $planPhase2.Name
@@ -460,7 +460,7 @@ function Invoke-DhPlan {
                 } -ColorEnabled $colorEnabled
 
             } elseif ($phaseType2 -eq 'single') {
-                Set-DhStateActive -State $state -Label $planPhase2.Name
+                Set-GuideStateActive -State $state -Label $planPhase2.Name
 
                 $result2 = $null
                 try {
@@ -468,9 +468,9 @@ function Invoke-DhPlan {
                     if ($null -eq $result2 -or $result2 -isnot [hashtable]) {
                         $result2 = @{ Success = $true; Message = $planPhase2.Name }
                     }
-                    $result2 = _Normalize-DhResult -Result $result2
+                    $result2 = _Normalize-GuideResult -Result $result2
                 } catch {
-                    $result2 = _Normalize-DhResult -Result @{
+                    $result2 = _Normalize-GuideResult -Result @{
                         Success  = $false
                         Message  = $_.Exception.Message
                         Severity = 'fail'
@@ -479,11 +479,11 @@ function Invoke-DhPlan {
                     }
                 }
 
-                Set-DhStateActive -State $state -Label ''
+                Set-GuideStateActive -State $state -Label ''
 
                 if (-not $result2.Success) {
                     $phaseHadFail2 = $true
-                    Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                    Add-GuideStateIssue -State $state -Phase $planPhase2.Name `
                         -Severity $result2.Severity -Message $result2.Message `
                         -FixCommand $result2.FixCommand -Animal $result2.Animal `
                         -LogTail $result2.LogTail
@@ -491,16 +491,16 @@ function Invoke-DhPlan {
 
                 if ($result2.Alerts -and $result2.Alerts.Count -gt 0) {
                     foreach ($alert2 in $result2.Alerts) {
-                        Add-DhStateIssue -State $state -Phase $planPhase2.Name `
+                        Add-GuideStateIssue -State $state -Phase $planPhase2.Name `
                             -Severity $alert2.Severity -Message $alert2.Message `
                             -FixCommand $alert2.FixCommand
                     }
                 }
 
                 $phaseStatus2 = if ($phaseHadFail2) { 'fail' } else { 'ok' }
-                Set-DhStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status $phaseStatus2
+                Set-GuideStatePhaseStatus -State $state -PhaseName $planPhase2.Name -Status $phaseStatus2
 
-                Invoke-DhStreamingRender -Event @{
+                Invoke-GuideStreamingRender -Event @{
                     Type       = 'phase-completed'
                     Theme      = $resolvedTheme2
                     PhaseName  = $planPhase2.Name
@@ -517,7 +517,7 @@ function Invoke-DhPlan {
         $state.ExitCode = if ($hasFail2) { 2 } elseif ($hasWarning2) { 1 } else { 0 }
         $state.CompletedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
-        Invoke-DhStreamingRender -Event @{
+        Invoke-GuideStreamingRender -Event @{
             Type     = 'plan-completed'
             Theme    = $resolvedTheme2
             State    = $state
@@ -530,22 +530,22 @@ function Invoke-DhPlan {
     # ── Full TUI path ─────────────────────────────────────────────────────────
 
     # Resolve theme for TUI.
-    $tuiThemeName   = Resolve-DhTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
-    $tuiTheme       = Get-DhTheme -Name $tuiThemeName
+    $tuiThemeName   = Resolve-GuideTheme -CliFlag $Theme -PlanField ($Plan.Theme) -Default 'twilight'
+    $tuiTheme       = Get-GuideTheme -Name $tuiThemeName
 
-    # Expose state as module-level $DerekhState so scriptblocks in Enter-DhInteractiveMode
+    # Expose state as module-level $GuideState so scriptblocks in Enter-GuideInteractiveMode
     # (created via [scriptblock]::Create) can reference it by name.
-    $script:DerekhState = $state
+    $script:GuideState = $state
 
     # Ctrl+C handler: restore terminal, stop resize watcher, and exit 130.
     $cancelHandler = {
         param($sender, $e)
         $e.Cancel = $true
         if ($null -ne $script:resizeHandle) {
-            Stop-DhResizeWatcher -Handle $script:resizeHandle
+            Stop-GuideResizeWatcher -Handle $script:resizeHandle
             $script:resizeHandle = $null
         }
-        Stop-DhTui
+        Stop-GuideTui
         [Environment]::Exit(130)
     }
     $cancelEvent = Register-ObjectEvent -InputObject ([Console]) -EventName CancelKeyPress -Action $cancelHandler
@@ -554,42 +554,54 @@ function Invoke-DhPlan {
     $script:resizeHandle = $null
 
     try {
-        Initialize-DhTui
+        # Best-effort enlarge the window before entering the alt screen buffer
+        # so the TUI starts on a clean canvas of a known-good size.
+        Resize-GuideWindow -MinWidth 120 -MinHeight 35
 
-        # Compute layout and seed terminal dimensions in state.
-        $sz = try { $Host.UI.RawUI.WindowSize } catch { @{ Width = $envInfo.Width; Height = $envInfo.Height } }
-        $state.TerminalWidth  = $sz.Width
-        $state.TerminalHeight = $sz.Height
+        Initialize-GuideTui
 
-        $layout = Get-DhLayout -Width $envInfo.Width -Height $envInfo.Height `
-                               -Theme $tuiTheme
+        # Compute layout and seed terminal dimensions in state. Prefer
+        # [Console] (reads underlying terminal); fall back to host RawUI,
+        # then to the env probe. Read AFTER Resize-GuideWindow so we capture
+        # the post-resize dimensions.
+        $seedW = 0; $seedH = 0
+        try { $seedW = [Console]::WindowWidth; $seedH = [Console]::WindowHeight } catch { }
+        if ($seedW -le 0 -or $seedH -le 0) {
+            try { $sz = $Host.UI.RawUI.WindowSize; $seedW = $sz.Width; $seedH = $sz.Height } catch { }
+        }
+        if ($seedW -le 0) { $seedW = $envInfo.Width }
+        if ($seedH -le 0) { $seedH = $envInfo.Height }
+        $state.TerminalWidth  = $seedW
+        $state.TerminalHeight = $seedH
+
+        $layout = Get-GuideLayout -Width $seedW -Height $seedH -Theme $tuiTheme
         $state.CurrentLayout = $layout
 
         # Start the background resize watcher (Phase G1).
         $resizeQueue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
-        $script:resizeHandle = Start-DhResizeWatcher -Queue $resizeQueue
+        $script:resizeHandle = Start-GuideResizeWatcher -Queue $resizeQueue
 
         # Initial full-frame render.
-        Render-DhHeader      -State $state -Theme $tuiTheme -Layout $layout
-        Render-DhPhasesPane  -State $state -Theme $tuiTheme -Layout $layout
-        Render-DhActivePane  -State $state -Theme $tuiTheme -Layout $layout
-        Render-DhIssuesPane  -State $state -Theme $tuiTheme -Layout $layout
-        Render-DhFooter      -State $state -Theme $tuiTheme -Layout $layout
+        Show-GuideHeader      -State $state -Theme $tuiTheme -Layout $layout
+        Show-GuidePhasesPane  -State $state -Theme $tuiTheme -Layout $layout
+        Show-GuideActivePane  -State $state -Theme $tuiTheme -Layout $layout
+        Show-GuideIssuesPane  -State $state -Theme $tuiTheme -Layout $layout
+        Show-GuideFooter      -State $state -Theme $tuiTheme -Layout $layout
 
         # Key handlers — quit only during plan execution.
         $shouldQuit = $false
-        Clear-DhKeyHandlers
-        Register-DhKeyHandler -Key 'Q'      -Action { $script:shouldQuit = $true }
-        Register-DhKeyHandler -Key 'Escape' -Action { $script:shouldQuit = $true }
-        Register-DhKeyHandler -Key 'Enter'  -Action { $script:shouldQuit = $true }
+        Clear-GuideKeyHandlers
+        Register-GuideKeyHandler -Key 'Q'      -Action { $script:shouldQuit = $true }
+        Register-GuideKeyHandler -Key 'Escape' -Action { $script:shouldQuit = $true }
+        Register-GuideKeyHandler -Key 'Enter'  -Action { $script:shouldQuit = $true }
 
         # Run phases with TUI redraws on state change.
         foreach ($tuiPhase in $Plan.Phases) {
             if ($shouldQuit) { break }
 
             $tuiPhaseType = if ($tuiPhase.ContainsKey('Type')) { $tuiPhase.Type } else { 'loop' }
-            Set-DhStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status 'running'
-            Render-DhPhasesPane -State $state -Theme $tuiTheme -Layout $layout
+            Set-GuideStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status 'running'
+            Show-GuidePhasesPane -State $state -Theme $tuiTheme -Layout $layout
 
             $tuiPhaseHadFail = $false
 
@@ -598,32 +610,32 @@ function Invoke-DhPlan {
                     # Drain resize queue before each item
                     $resizeEvent = $null
                     while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
-                        $layout = Get-DhLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
+                        $layout = Get-GuideLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
                         $state.CurrentLayout = $layout
-                        Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                        Invoke-GuideResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
                             -State $state -Theme $tuiTheme
                     }
 
                     # Pause check: don't start new items while terminal is too small
                     while ($state.Paused -and -not $shouldQuit) {
-                        if (Test-DhKeyAvailable) {
-                            $k = Read-DhKey
-                            Invoke-DhKeyDispatch -KeyInfo $k
+                        if (Test-GuideKeyAvailable) {
+                            $k = Read-GuideKey
+                            Invoke-GuideKeyDispatch -KeyInfo $k
                         }
                         $resizeEvent = $null
                         while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
-                            $layout = Get-DhLayout -Width ([Math]::Max($resizeEvent.Width, 60)) `
+                            $layout = Get-GuideLayout -Width ([Math]::Max($resizeEvent.Width, 60)) `
                                 -Height ([Math]::Max($resizeEvent.Height, 15)) -Theme $tuiTheme
                             $state.CurrentLayout = $layout
-                            Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                            Invoke-GuideResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
                                 -State $state -Theme $tuiTheme
                         }
                         Start-Sleep -Milliseconds 50
                     }
                     if ($shouldQuit) { break }
 
-                    Set-DhStateActive -State $state -Label $tuiItem.ToString()
-                    Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+                    Set-GuideStateActive -State $state -Label $tuiItem.ToString()
+                    Show-GuideActivePane -State $state -Theme $tuiTheme -Layout $layout
 
                     $tuiResult = $null
                     try {
@@ -631,9 +643,9 @@ function Invoke-DhPlan {
                         if ($null -eq $tuiResult -or $tuiResult -isnot [hashtable]) {
                             $tuiResult = @{ Success = $true; Message = $tuiItem.ToString() }
                         }
-                        $tuiResult = _Normalize-DhResult -Result $tuiResult
+                        $tuiResult = _Normalize-GuideResult -Result $tuiResult
                     } catch {
-                        $tuiResult = _Normalize-DhResult -Result @{
+                        $tuiResult = _Normalize-GuideResult -Result @{
                             Success  = $false
                             Message  = $_.Exception.Message
                             Severity = 'fail'
@@ -645,75 +657,75 @@ function Invoke-DhPlan {
                     $tuiItemStatus = if ($tuiResult.Success) { 'ok' } else {
                         if ($tuiResult.Severity -eq 'warning') { 'warn' } else { 'fail' }
                     }
-                    Add-DhStatePhaseItem -State $state -PhaseName $tuiPhase.Name `
+                    Add-GuideStatePhaseItem -State $state -PhaseName $tuiPhase.Name `
                         -ItemName $tuiItem.ToString() -Status $tuiItemStatus -Message $tuiResult.Message
 
                     if (-not $tuiResult.Success) {
                         $tuiPhaseHadFail = $true
-                        Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                        Add-GuideStateIssue -State $state -Phase $tuiPhase.Name `
                             -Severity $tuiResult.Severity -Message $tuiResult.Message `
                             -FixCommand $tuiResult.FixCommand -Animal $tuiResult.Animal `
                             -LogTail $tuiResult.LogTail
-                        Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                        Show-GuideIssuesPane -State $state -Theme $tuiTheme -Layout $layout
                     }
 
                     if ($tuiResult.Alerts -and $tuiResult.Alerts.Count -gt 0) {
                         foreach ($tuiAlert in $tuiResult.Alerts) {
-                            Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                            Add-GuideStateIssue -State $state -Phase $tuiPhase.Name `
                                 -Severity $tuiAlert.Severity -Message $tuiAlert.Message `
                                 -FixCommand $tuiAlert.FixCommand
                         }
-                        Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                        Show-GuideIssuesPane -State $state -Theme $tuiTheme -Layout $layout
                     }
 
                     # Poll for quit key between items.
-                    if (Test-DhKeyAvailable) {
-                        $tuiKey = Read-DhKey
-                        Invoke-DhKeyDispatch -KeyInfo $tuiKey
+                    if (Test-GuideKeyAvailable) {
+                        $tuiKey = Read-GuideKey
+                        Invoke-GuideKeyDispatch -KeyInfo $tuiKey
                     }
                     if ($shouldQuit) { break }
                 }
 
-                Set-DhStateActive -State $state -Label ''
+                Set-GuideStateActive -State $state -Label ''
                 $tuiStatePhase = $state.Phases | Where-Object { $_.Name -eq $tuiPhase.Name } | Select-Object -First 1
                 $tuiOkCount    = @($tuiStatePhase.Items | Where-Object { $_.Status -eq 'ok' }).Count
                 $tuiPhaseStatus = if ($tuiPhaseHadFail) {
                     if ($tuiOkCount -gt 0) { 'warn' } else { 'fail' }
                 } else { 'ok' }
-                Set-DhStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status $tuiPhaseStatus
-                Render-DhPhasesPane -State $state -Theme $tuiTheme -Layout $layout
-                Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+                Set-GuideStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status $tuiPhaseStatus
+                Show-GuidePhasesPane -State $state -Theme $tuiTheme -Layout $layout
+                Show-GuideActivePane -State $state -Theme $tuiTheme -Layout $layout
 
             } elseif ($tuiPhaseType -eq 'single') {
                 # Drain resize queue before single phase
                 $resizeEvent = $null
                 while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
-                    $layout = Get-DhLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
+                    $layout = Get-GuideLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
                     $state.CurrentLayout = $layout
-                    Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                    Invoke-GuideResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
                         -State $state -Theme $tuiTheme
                 }
 
                 # Pause check
                 while ($state.Paused -and -not $shouldQuit) {
-                    if (Test-DhKeyAvailable) {
-                        $k = Read-DhKey
-                        Invoke-DhKeyDispatch -KeyInfo $k
+                    if (Test-GuideKeyAvailable) {
+                        $k = Read-GuideKey
+                        Invoke-GuideKeyDispatch -KeyInfo $k
                     }
                     $resizeEvent = $null
                     while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
-                        $layout = Get-DhLayout -Width ([Math]::Max($resizeEvent.Width, 60)) `
+                        $layout = Get-GuideLayout -Width ([Math]::Max($resizeEvent.Width, 60)) `
                             -Height ([Math]::Max($resizeEvent.Height, 15)) -Theme $tuiTheme
                         $state.CurrentLayout = $layout
-                        Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                        Invoke-GuideResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
                             -State $state -Theme $tuiTheme
                     }
                     Start-Sleep -Milliseconds 50
                 }
                 if ($shouldQuit) { break }
 
-                Set-DhStateActive -State $state -Label $tuiPhase.Name
-                Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+                Set-GuideStateActive -State $state -Label $tuiPhase.Name
+                Show-GuideActivePane -State $state -Theme $tuiTheme -Layout $layout
 
                 $tuiResult = $null
                 try {
@@ -721,9 +733,9 @@ function Invoke-DhPlan {
                     if ($null -eq $tuiResult -or $tuiResult -isnot [hashtable]) {
                         $tuiResult = @{ Success = $true; Message = $tuiPhase.Name }
                     }
-                    $tuiResult = _Normalize-DhResult -Result $tuiResult
+                    $tuiResult = _Normalize-GuideResult -Result $tuiResult
                 } catch {
-                    $tuiResult = _Normalize-DhResult -Result @{
+                    $tuiResult = _Normalize-GuideResult -Result @{
                         Success  = $false
                         Message  = $_.Exception.Message
                         Severity = 'fail'
@@ -732,35 +744,35 @@ function Invoke-DhPlan {
                     }
                 }
 
-                Set-DhStateActive -State $state -Label ''
+                Set-GuideStateActive -State $state -Label ''
 
                 if (-not $tuiResult.Success) {
                     $tuiPhaseHadFail = $true
-                    Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                    Add-GuideStateIssue -State $state -Phase $tuiPhase.Name `
                         -Severity $tuiResult.Severity -Message $tuiResult.Message `
                         -FixCommand $tuiResult.FixCommand -Animal $tuiResult.Animal `
                         -LogTail $tuiResult.LogTail
-                    Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                    Show-GuideIssuesPane -State $state -Theme $tuiTheme -Layout $layout
                 }
 
                 if ($tuiResult.Alerts -and $tuiResult.Alerts.Count -gt 0) {
                     foreach ($tuiAlert in $tuiResult.Alerts) {
-                        Add-DhStateIssue -State $state -Phase $tuiPhase.Name `
+                        Add-GuideStateIssue -State $state -Phase $tuiPhase.Name `
                             -Severity $tuiAlert.Severity -Message $tuiAlert.Message `
                             -FixCommand $tuiAlert.FixCommand
                     }
-                    Render-DhIssuesPane -State $state -Theme $tuiTheme -Layout $layout
+                    Show-GuideIssuesPane -State $state -Theme $tuiTheme -Layout $layout
                 }
 
                 $tuiPhaseStatus = if ($tuiPhaseHadFail) { 'fail' } else { 'ok' }
-                Set-DhStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status $tuiPhaseStatus
-                Render-DhPhasesPane -State $state -Theme $tuiTheme -Layout $layout
-                Render-DhActivePane -State $state -Theme $tuiTheme -Layout $layout
+                Set-GuideStatePhaseStatus -State $state -PhaseName $tuiPhase.Name -Status $tuiPhaseStatus
+                Show-GuidePhasesPane -State $state -Theme $tuiTheme -Layout $layout
+                Show-GuideActivePane -State $state -Theme $tuiTheme -Layout $layout
 
                 # Poll for quit key.
-                if (Test-DhKeyAvailable) {
-                    $tuiKey = Read-DhKey
-                    Invoke-DhKeyDispatch -KeyInfo $tuiKey
+                if (Test-GuideKeyAvailable) {
+                    $tuiKey = Read-GuideKey
+                    Invoke-GuideKeyDispatch -KeyInfo $tuiKey
                 }
             }
 
@@ -776,7 +788,7 @@ function Invoke-DhPlan {
         if (-not $shouldQuit) {
             # Phase G2: Enter post-completion interactive mode.
             # Sets up [1-9] key handlers, updates footer, then falls into the wait loop below.
-            Enter-DhInteractiveMode -State $state -Theme $tuiTheme -Layout $layout `
+            Enter-GuideInteractiveMode -State $state -Theme $tuiTheme -Layout $layout `
                 -ShouldQuitRef ([ref]$shouldQuit)
         }
 
@@ -786,23 +798,23 @@ function Invoke-DhPlan {
             # Drain resize events
             $resizeEvent = $null
             while ($resizeQueue.TryDequeue([ref]$resizeEvent)) {
-                $layout = Get-DhLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
+                $layout = Get-GuideLayout -Width $resizeEvent.Width -Height $resizeEvent.Height -Theme $tuiTheme
                 $state.CurrentLayout = $layout
-                Invoke-DhResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
+                Invoke-GuideResize -NewWidth $resizeEvent.Width -NewHeight $resizeEvent.Height `
                     -State $state -Theme $tuiTheme
             }
 
             # Expire footer flash if duration elapsed
             if ($null -ne $state.FooterFlash) {
                 if ($state.FooterFlash.SW.ElapsedMilliseconds -ge $state.FooterFlash.DurationMs) {
-                    Set-DhFooter -Text $state.FooterFlash.RevertTo -Layout $layout
+                    Set-GuideFooter -Text $state.FooterFlash.RevertTo -Layout $layout
                     $state.FooterFlash = $null
                 }
             }
 
-            if (Test-DhKeyAvailable) {
-                $waitKey = Read-DhKey
-                Invoke-DhKeyDispatch -KeyInfo $waitKey
+            if (Test-GuideKeyAvailable) {
+                $waitKey = Read-GuideKey
+                Invoke-GuideKeyDispatch -KeyInfo $waitKey
             }
             Start-Sleep -Milliseconds 50
         }
@@ -810,10 +822,10 @@ function Invoke-DhPlan {
     } finally {
         # Stop resize watcher before cleaning up TUI
         if ($null -ne $script:resizeHandle) {
-            Stop-DhResizeWatcher -Handle $script:resizeHandle
+            Stop-GuideResizeWatcher -Handle $script:resizeHandle
             $script:resizeHandle = $null
         }
-        Stop-DhTui
+        Stop-GuideTui
         Unregister-Event -SourceIdentifier $cancelEvent.Name -ErrorAction SilentlyContinue
         Remove-Job -Id $cancelEvent.Id -Force -ErrorAction SilentlyContinue
     }

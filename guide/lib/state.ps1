@@ -1,8 +1,8 @@
-# derekh/lib/state.ps1
-# Owns: $DerekhState hashtable — phases, items, issues, active label, exit code.
+# guide/lib/state.ps1
+# Owns: $GuideState hashtable — phases, items, issues, active label, exit code.
 # Does NOT know about: drawing, input, themes.
 
-function New-DhState {
+function New-GuideState {
     param(
         [string]$Title    = "",
         [string]$Subtitle = ""
@@ -22,12 +22,12 @@ function New-DhState {
         Paused         = $false
         # Phase G: footer flash state
         FooterFlash    = $null   # [PSCustomObject]@{ Message; RevertTo; SW; DurationMs } | $null
-        # Phase G: cached layout for Set-DhFooter
+        # Phase G: cached layout for Set-GuideFooter
         CurrentLayout  = $null
     }
 }
 
-function Add-DhStatePhase {
+function Add-GuideStatePhase {
     param(
         [hashtable]$State,
         [string]$Name,
@@ -42,7 +42,7 @@ function Add-DhStatePhase {
     })
 }
 
-function Set-DhStatePhaseStatus {
+function Set-GuideStatePhaseStatus {
     param(
         [hashtable]$State,
         [string]$PhaseName,
@@ -55,7 +55,7 @@ function Set-DhStatePhaseStatus {
     }
 }
 
-function Add-DhStatePhaseItem {
+function Add-GuideStatePhaseItem {
     param(
         [hashtable]$State,
         [string]$PhaseName,
@@ -74,7 +74,7 @@ function Add-DhStatePhaseItem {
     }
 }
 
-function Add-DhStateIssue {
+function Add-GuideStateIssue {
     param(
         [hashtable]$State,
         [string]$Phase,
@@ -95,7 +95,7 @@ function Add-DhStateIssue {
     })
 }
 
-function Set-DhStateActive {
+function Set-GuideStateActive {
     param(
         [hashtable]$State,
         [string]$Label
@@ -103,7 +103,7 @@ function Set-DhStateActive {
     $State.ActiveLabel = $Label
 }
 
-function Get-DhStateSummary {
+function Get-GuideStateSummary {
     param(
         [hashtable]$State
     )

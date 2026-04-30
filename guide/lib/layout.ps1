@@ -1,18 +1,18 @@
-# derekh/lib/layout.ps1
+# guide/lib/layout.ps1
 # Owns: pure layout math — (W, H, theme) → 5 region rectangles.
 # Does NOT know: cursor positioning, escape codes.
 
-function Test-DhLayoutFits {
+function Test-GuideLayoutFits {
     param(
         [Parameter(Mandatory)]
         [int]$Width,
         [Parameter(Mandatory)]
         [int]$Height
     )
-    return ($Width -ge 60 -and $Height -ge 15)
+    return ($Width -ge 60 -and $Height -ge 10)
 }
 
-function Get-DhLayout {
+function Get-GuideLayout {
     param(
         [Parameter(Mandatory)]
         [int]$Width,

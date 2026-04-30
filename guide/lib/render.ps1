@@ -18,19 +18,19 @@ function script:Esc { param([string]$seq) "$($script:ESC)[$seq" }
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-function Initialize-DhTui {
+function Initialize-GuideTui {
     <#
     .SYNOPSIS
         Enter the TUI: switch to alternate screen buffer, hide cursor, set UTF-8.
     .DESCRIPTION
         Sends \e[?1049h (alternate buffer), \e[?25l (hide cursor).
         Sets [Console]::OutputEncoding to UTF-8 so glyphs render correctly
-        on Windows Terminal. Saves original encoding to restore on Stop-DhTui.
+        on Windows Terminal. Saves original encoding to restore on Stop-GuideTui.
     #>
     [CmdletBinding()]
     param()
 
-    # Save original encoding so Stop-DhTui can restore it.
+    # Save original encoding so Stop-GuideTui can restore it.
     $script:_originalEncoding = [Console]::OutputEncoding
 
     # UTF-8 for glyph support (Windows Terminal handles this natively, but
@@ -45,9 +45,54 @@ function Initialize-DhTui {
 
     # Reset any lingering ANSI state from the caller's terminal.
     [Console]::Write("$(Esc '0m')")
+
+    # Explicit clear after entering alt buffer — defends against terminals
+    # that don't fully blank the alt buffer on \e[?1049h. Without this,
+    # leftover output from the calling shell can bleed through at column 0.
+    [Console]::Write("$(Esc '2J')$(Esc '3J')$(Esc 'H')")
 }
 
-function Stop-DhTui {
+function Resize-GuideWindow {
+    <#
+    .SYNOPSIS
+        Best-effort enlarge the host window/buffer to a target minimum size.
+    .DESCRIPTION
+        Only enlarges — never shrinks — so a user who deliberately maximized
+        their terminal isn't shrunk down. Fails silently in hosts that don't
+        support setting WindowSize (ISE, redirected, some embedded terminals).
+    #>
+    [CmdletBinding()]
+    param(
+        [int]$MinWidth  = 120,
+        [int]$MinHeight = 35
+    )
+    try {
+        $rawUI    = $Host.UI.RawUI
+        $curBuf   = $rawUI.BufferSize
+        $curWin   = $rawUI.WindowSize
+        $maxPhys  = $rawUI.MaxPhysicalWindowSize
+
+        $targetW = [Math]::Min($MinWidth,  $maxPhys.Width)
+        $targetH = [Math]::Min($MinHeight, $maxPhys.Height)
+
+        # Buffer must be at least as wide as the window. Grow buffer first if
+        # needed; never shrink the buffer (preserves scrollback width).
+        if ($curBuf.Width -lt $targetW) {
+            $rawUI.BufferSize = New-Object Management.Automation.Host.Size $targetW, $curBuf.Height
+        }
+        # Grow window if smaller than target on either axis.
+        if ($curWin.Width -lt $targetW -or $curWin.Height -lt $targetH) {
+            $newW = [Math]::Max($curWin.Width,  $targetW)
+            $newH = [Math]::Max($curWin.Height, $targetH)
+            $rawUI.WindowSize = New-Object Management.Automation.Host.Size $newW, $newH
+        }
+    } catch {
+        # WindowSize setting unavailable (ISE, non-TTY, some embedded hosts).
+        Write-Verbose "Resize-GuideWindow: window resize unavailable — $_"
+    }
+}
+
+function Stop-GuideTui {
     <#
     .SYNOPSIS
         Exit the TUI cleanly: restore cursor, exit alternate buffer, reset ANSI.
@@ -79,14 +124,14 @@ function Stop-DhTui {
 
 # ── Cursor positioning ────────────────────────────────────────────────────────
 
-function Set-DhCursor {
+function Set-GuideCursor {
     <#
     .SYNOPSIS
-        Move the cursor to column X, row Y (both 0-indexed).
+        Move the cursor to column X, row Y (1-indexed, matching layout convention).
     .DESCRIPTION
-        Uses [Console]::SetCursorPosition which is available on all platforms.
-        X=0 Y=0 is the top-left corner of the screen (or alternate buffer).
-        Guards against out-of-bounds coordinates and non-TTY contexts.
+        Uses [Console]::SetCursorPosition which is 0-indexed; we translate by -1
+        so callers can pass layout values (Header.X=1, Footer.Y=$Height) directly.
+        X=1 Y=1 is the top-left corner. Guards against out-of-bounds and non-TTY.
     #>
     [CmdletBinding()]
     param(
@@ -94,20 +139,20 @@ function Set-DhCursor {
         [Parameter(Mandatory)][int]$Y
     )
     try {
-        # Clamp to non-negative to avoid ArgumentOutOfRangeException.
-        $cx = [Math]::Max(0, $X)
-        $cy = [Math]::Max(0, $Y)
+        # Translate layout 1-indexed → console 0-indexed, clamping to ≥0.
+        $cx = [Math]::Max(0, $X - 1)
+        $cy = [Math]::Max(0, $Y - 1)
         [Console]::SetCursorPosition($cx, $cy)
     } catch {
         # In non-TTY contexts (redirected output, CI), SetCursorPosition throws.
         # Silently swallow — drawing calls are no-ops in non-interactive mode.
-        Write-Verbose "Set-DhCursor: cursor positioning unavailable — $_"
+        Write-Verbose "Set-GuideCursor: cursor positioning unavailable — $_"
     }
 }
 
 # ── Region clearing ───────────────────────────────────────────────────────────
 
-function Clear-DhRegion {
+function Clear-GuideRegion {
     <#
     .SYNOPSIS
         Overwrite a rectangular region with spaces (no full-screen clear).
@@ -125,14 +170,14 @@ function Clear-DhRegion {
 
     $blank = ' ' * $Width
     for ($row = $Y; $row -lt ($Y + $Height); $row++) {
-        Set-DhCursor -X $X -Y $row
+        Set-GuideCursor -X $X -Y $row
         [Console]::Write($blank)
     }
 }
 
 # ── Positioned text write ─────────────────────────────────────────────────────
 
-function Write-DhAt {
+function Write-GuideAt {
     <#
     .SYNOPSIS
         Write text at (X, Y) with optional truecolor and bold.
@@ -150,7 +195,7 @@ function Write-DhAt {
         [bool]$Bold = $false
     )
 
-    Set-DhCursor -X $X -Y $Y
+    Set-GuideCursor -X $X -Y $Y
 
     $prefix = ''
     $suffix = "$(Esc '0m')"    # reset after every write
@@ -161,9 +206,13 @@ function Write-DhAt {
 
     if ($Color) {
         # Parse hex: 'rrggbb' → r, g, b integers
-        $r = [Convert]::ToInt32($Color.Substring(0, 2), 16)
-        $g = [Convert]::ToInt32($Color.Substring(2, 2), 16)
-        $b = [Convert]::ToInt32($Color.Substring(4, 2), 16)
+        $hex = $Color -replace '^#', ''
+        if ($hex.Length -ne 6 -or $hex -notmatch '^[0-9A-Fa-f]{6}$') {
+            throw "Write-GuideAt: invalid hex color '$Color' (expected 6-char rrggbb)"
+        }
+        $r = [Convert]::ToInt32($hex.Substring(0, 2), 16)
+        $g = [Convert]::ToInt32($hex.Substring(2, 2), 16)
+        $b = [Convert]::ToInt32($hex.Substring(4, 2), 16)
         $prefix += "$(Esc "38;2;${r};${g};${b}m")"
     }
 
@@ -176,7 +225,7 @@ function Write-DhAt {
 # Layout rect keys expected per region: X, Y, Width, Height
 # Drawers return nothing; side-effect is terminal output.
 
-function Render-DhHeader {
+function Show-GuideHeader {
     <#
     .SYNOPSIS
         Draw the header region: title, subtitle, and overall progress bar.
@@ -198,20 +247,20 @@ function Render-DhHeader {
     $gl   = $Theme.glyphs
 
     # Clear the region first.
-    Clear-DhRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
+    Clear-GuideRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
 
     # Row 0: title (icon + title text) and subtitle right-aligned.
     $titleIcon = if ($gl.icon_title) { $gl.icon_title } else { '' }
     $titleText = "$titleIcon $($State.Title)"
     $subtitle  = if ($State.Subtitle) { $State.Subtitle } else { '' }
 
-    Write-DhAt -X $rect.X -Y $rect.Y -Text $titleText `
+    Write-GuideAt -X $rect.X -Y $rect.Y -Text $titleText `
                -Color $pal.title -Bold $true
 
     if ($subtitle) {
         $subtitleX = $rect.X + $rect.Width - $subtitle.Length
         if ($subtitleX -gt $rect.X) {
-            Write-DhAt -X $subtitleX -Y $rect.Y -Text $subtitle `
+            Write-GuideAt -X $subtitleX -Y $rect.Y -Text $subtitle `
                        -Color $pal.dim
         }
     }
@@ -231,11 +280,11 @@ function Render-DhHeader {
         $pct = if ($total -gt 0) { [int]($phasesOk / $total * 100) } else { 0 }
         $progressText = " $bar $pct% ($phasesOk/$total phases)"
 
-        Write-DhAt -X $rect.X -Y $barRow -Text $progressText -Color $pal.accent
+        Write-GuideAt -X $rect.X -Y $barRow -Text $progressText -Color $pal.accent
     }
 }
 
-function Render-DhPhasesPane {
+function Show-GuidePhasesPane {
     <#
     .SYNOPSIS
         Draw the left phases pane: phase list with status glyphs.
@@ -256,10 +305,10 @@ function Render-DhPhasesPane {
     $pal  = $Theme.palette
     $gl   = $Theme.glyphs
 
-    Clear-DhRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
+    Clear-GuideRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
 
     # Draw border.
-    _Draw-DhBox -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height `
+    _Draw-GuideBox -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height `
                 -Theme $Theme -Title 'Phases'
 
     # Inner area: X+1, Y+1, Width-2, Height-2.
@@ -290,7 +339,7 @@ function Render-DhPhasesPane {
         $color  = if ($colorMap[$status]) { $colorMap[$status] } else { $pal.dim }
 
         # Glyph.
-        Write-DhAt -X $innerX -Y ($innerY + $i) -Text $glyph -Color $color
+        Write-GuideAt -X $innerX -Y ($innerY + $i) -Text $glyph -Color $color
 
         # Name (truncated to fit).
         $name = $phase.Name
@@ -298,11 +347,11 @@ function Render-DhPhasesPane {
             $name = $name.Substring(0, $innerW - 3) + '…'
         }
         $nameColor = if ($status -eq 'running') { $pal.running } else { $pal.fg }
-        Write-DhAt -X ($innerX + 2) -Y ($innerY + $i) -Text $name -Color $nameColor
+        Write-GuideAt -X ($innerX + 2) -Y ($innerY + $i) -Text $name -Color $nameColor
     }
 }
 
-function Render-DhActivePane {
+function Show-GuideActivePane {
     <#
     .SYNOPSIS
         Draw the active sub-pane: currently-running item + spinner.
@@ -322,8 +371,8 @@ function Render-DhActivePane {
     $pal  = $Theme.palette
     $gl   = $Theme.glyphs
 
-    Clear-DhRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
-    _Draw-DhBox -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height `
+    Clear-GuideRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
+    _Draw-GuideBox -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height `
                 -Theme $Theme -Title 'Active'
 
     $innerX = $rect.X + 1
@@ -338,28 +387,28 @@ function Render-DhActivePane {
         $frameIdx    = $State.SpinnerFrame % $frames.Count
         $spinnerChar = $frames[$frameIdx]
 
-        Write-DhAt -X $innerX -Y $innerY -Text $spinnerChar -Color $pal.running
+        Write-GuideAt -X $innerX -Y $innerY -Text $spinnerChar -Color $pal.running
 
         # Item name.
         $name = $active.Name
         if ($name.Length -gt ($innerW - 3)) {
             $name = $name.Substring(0, $innerW - 4) + '…'
         }
-        Write-DhAt -X ($innerX + 2) -Y $innerY -Text $name -Color $pal.running
+        Write-GuideAt -X ($innerX + 2) -Y $innerY -Text $name -Color $pal.running
 
         # Elapsed time (row 2 if height permits).
         if ($rect.Height -ge 4 -and $active.StartedAt) {
             $elapsed = (Get-Date) - $active.StartedAt
             $elapsedText = '{0:F1}s' -f $elapsed.TotalSeconds
-            Write-DhAt -X $innerX -Y ($innerY + 1) -Text "Elapsed: $elapsedText" `
+            Write-GuideAt -X $innerX -Y ($innerY + 1) -Text "Elapsed: $elapsedText" `
                        -Color $pal.dim
         }
     } else {
-        Write-DhAt -X $innerX -Y $innerY -Text 'Waiting...' -Color $pal.dim
+        Write-GuideAt -X $innerX -Y $innerY -Text 'Waiting...' -Color $pal.dim
     }
 }
 
-function Render-DhIssuesPane {
+function Show-GuideIssuesPane {
     <#
     .SYNOPSIS
         Draw the issues pane: chronological list of warnings and failures.
@@ -382,8 +431,8 @@ function Render-DhIssuesPane {
     $pal  = $Theme.palette
     $gl   = $Theme.glyphs
 
-    Clear-DhRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
-    _Draw-DhBox -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height `
+    Clear-GuideRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
+    _Draw-GuideBox -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height `
                 -Theme $Theme -Title 'Issues'
 
     $innerX   = $rect.X + 1
@@ -393,7 +442,7 @@ function Render-DhIssuesPane {
 
     $issues = $State.Issues
     if (-not $issues -or $issues.Count -eq 0) {
-        Write-DhAt -X $innerX -Y $innerY -Text 'No issues' -Color $pal.dim
+        Write-GuideAt -X $innerX -Y $innerY -Text 'No issues' -Color $pal.dim
         return
     }
 
@@ -416,21 +465,21 @@ function Render-DhIssuesPane {
             if ($n -le 9) {
                 # Accent-colored [N] prefix (write separately for color control)
                 $indexText = "[$n] "
-                Write-DhAt -X $innerX -Y $row -Text $indexText -Color $pal.accent
+                Write-GuideAt -X $innerX -Y $row -Text $indexText -Color $pal.accent
                 $msgX = $innerX + $indexText.Length
                 $availW = $innerW - $indexText.Length
                 $msg = $issue.Message
                 if ($msg.Length -gt $availW) {
                     $msg = $msg.Substring(0, $availW - 1) + '…'
                 }
-                Write-DhAt -X $msgX -Y $row -Text $msg -Color $color
+                Write-GuideAt -X $msgX -Y $row -Text $msg -Color $color
             } else {
                 # Issues 10+: 4-space indent, no hotkey
                 $msg = '    ' + $issue.Message
                 if ($msg.Length -gt $innerW) {
                     $msg = $msg.Substring(0, $innerW - 1) + '…'
                 }
-                Write-DhAt -X $innerX -Y $row -Text $msg -Color $color
+                Write-GuideAt -X $innerX -Y $row -Text $msg -Color $color
             }
         } else {
             $prefix  = if ($gl.icon_alert -and $severity -ne 'info') { "$($gl.icon_alert) " } else { '  ' }
@@ -438,12 +487,12 @@ function Render-DhIssuesPane {
             if ($msg.Length -gt $innerW) {
                 $msg = $msg.Substring(0, $innerW - 1) + '…'
             }
-            Write-DhAt -X $innerX -Y $row -Text $msg -Color $color
+            Write-GuideAt -X $innerX -Y $row -Text $msg -Color $color
         }
     }
 }
 
-function Render-DhFooter {
+function Show-GuideFooter {
     <#
     .SYNOPSIS
         Draw the footer: key-binding hints and status line.
@@ -463,15 +512,15 @@ function Render-DhFooter {
     $rect = $Layout.Footer
     $pal  = $Theme.palette
 
-    Clear-DhRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
+    Clear-GuideRegion -X $rect.X -Y $rect.Y -Width $rect.Width -Height $rect.Height
 
     $hint = '[q] quit'
-    Write-DhAt -X $rect.X -Y $rect.Y -Text $hint -Color $pal.dim
+    Write-GuideAt -X $rect.X -Y $rect.Y -Text $hint -Color $pal.dim
 }
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-function script:_Draw-DhBox {
+function script:_Draw-GuideBox {
     <#
     .SYNOPSIS
         Draw a single-line Unicode box at (X, Y) with dimensions (Width x Height).
@@ -500,27 +549,27 @@ function script:_Draw-DhBox {
         $rPad = $pad - $lPad
         $topBar = ($h * $lPad) + " $Title " + ($h * $rPad)
     }
-    Write-DhAt -X $X -Y $Y -Text "${tl}${topBar}${tr}" -Color $c
+    Write-GuideAt -X $X -Y $Y -Text "${tl}${topBar}${tr}" -Color $c
 
     # Side borders.
     for ($row = $Y + 1; $row -lt ($Y + $Height - 1); $row++) {
-        Write-DhAt -X $X -Y $row -Text $v -Color $c
-        Write-DhAt -X ($X + $Width - 1) -Y $row -Text $v -Color $c
+        Write-GuideAt -X $X -Y $row -Text $v -Color $c
+        Write-GuideAt -X ($X + $Width - 1) -Y $row -Text $v -Color $c
     }
 
     # Bottom border.
     $bottomBar = $h * ($Width - 2)
-    Write-DhAt -X $X -Y ($Y + $Height - 1) -Text "${bl}${bottomBar}${br}" -Color $c
+    Write-GuideAt -X $X -Y ($Y + $Height - 1) -Text "${bl}${bottomBar}${br}" -Color $c
 }
 
 # ── Phase G: Resize handling ──────────────────────────────────────────────────
 
-function Write-DhCentered {
+function Write-GuideCentered {
     <#
     .SYNOPSIS
         Clear the screen and write each line centered both horizontally and vertically.
     .DESCRIPTION
-        Used by Invoke-DhResize to show the "Terminal too small" message.
+        Used by Invoke-GuideResize to show the "Terminal too small" message.
         Guards against non-TTY environments (SetCursorPosition may throw).
     #>
     [CmdletBinding()]
@@ -541,18 +590,18 @@ function Write-DhCentered {
         }
     } catch {
         # Non-TTY or console API unavailable — silently skip
-        Write-Verbose "Write-DhCentered: terminal write failed — $_"
+        Write-Verbose "Write-GuideCentered: terminal write failed — $_"
     }
 }
 
-function Start-DhResizeWatcher {
+function Start-GuideResizeWatcher {
     <#
     .SYNOPSIS
         Launch a background runspace that polls terminal size every 200ms.
     .DESCRIPTION
         When a size change is detected, enqueues a resize token into the shared
         ConcurrentQueue. The main event loop drains this queue and calls
-        Invoke-DhResize for each token.
+        Invoke-GuideResize for each token.
         Returns a handle object: @{ Runspace; PowerShell; AsyncResult }.
     #>
     [CmdletBinding()]
@@ -561,17 +610,24 @@ function Start-DhResizeWatcher {
         [System.Collections.Concurrent.ConcurrentQueue[object]]$Queue
     )
 
+    $initW = 0; $initH = 0
     try {
-        $sz    = $Host.UI.RawUI.WindowSize
-        $initW = $sz.Width
-        $initH = $sz.Height
+        $initW = [Console]::WindowWidth
+        $initH = [Console]::WindowHeight
     } catch {
-        # RawUI unavailable (non-TTY); return a dummy handle
-        $initW = 80
-        $initH = 24
+        try {
+            $sz    = $Host.UI.RawUI.WindowSize
+            $initW = $sz.Width
+            $initH = $sz.Height
+        } catch { }
     }
+    if ($initW -le 0) { $initW = 80 }
+    if ($initH -le 0) { $initH = 24 }
 
-    $rs = [runspacefactory]::CreateRunspace()
+    # Share the parent's host so $Host.UI.RawUI in the child reflects the real
+    # terminal. A default-constructed runspace has an inert host that never
+    # sees terminal size changes — that's why resize events used to be missed.
+    $rs = [runspacefactory]::CreateRunspace($Host)
     $rs.ApartmentState = 'STA'
     $rs.ThreadOptions   = 'ReuseThread'
     $rs.Open()
@@ -585,16 +641,25 @@ function Start-DhResizeWatcher {
         $h = $InitialH
         while ($true) {
             Start-Sleep -Milliseconds 200
+            $newW = 0; $newH = 0
+            # Prefer [Console] (reads the underlying terminal directly); fall
+            # back to $Host.UI.RawUI for hosts where [Console] handles fail.
             try {
-                $sz = $Host.UI.RawUI.WindowSize
-                if ($sz.Width -ne $w -or $sz.Height -ne $h) {
-                    $w = $sz.Width
-                    $h = $sz.Height
-                    $null = $Queue.Enqueue([PSCustomObject]@{ Width = $w; Height = $h })
-                }
+                $newW = [Console]::WindowWidth
+                $newH = [Console]::WindowHeight
             } catch {
-                # Host.UI.RawUI may not be available in this runspace on some
-                # platforms — silently continue polling.
+                try {
+                    $sz = $Host.UI.RawUI.WindowSize
+                    $newW = $sz.Width
+                    $newH = $sz.Height
+                } catch { }
+            }
+            # Ignore obviously-bogus zero readings (transient detection error).
+            if ($newW -le 0 -or $newH -le 0) { continue }
+            if ($newW -ne $w -or $newH -ne $h) {
+                $w = $newW
+                $h = $newH
+                $null = $Queue.Enqueue([PSCustomObject]@{ Width = $w; Height = $h })
             }
         }
     }).AddParameter('Queue', $Queue).AddParameter('InitialW', $initW).AddParameter('InitialH', $initH)
@@ -608,7 +673,7 @@ function Start-DhResizeWatcher {
     }
 }
 
-function Stop-DhResizeWatcher {
+function Stop-GuideResizeWatcher {
     <#
     .SYNOPSIS
         Stop the background resize-polling runspace and dispose resources.
@@ -626,17 +691,17 @@ function Stop-DhResizeWatcher {
         $Handle.Runspace.Dispose()
     } catch {
         # Best-effort; teardown is happening anyway
-        Write-Verbose "Stop-DhResizeWatcher: cleanup error (ignored) — $_"
+        Write-Verbose "Stop-GuideResizeWatcher: cleanup error (ignored) — $_"
     }
 }
 
-function Invoke-DhResize {
+function Invoke-GuideResize {
     <#
     .SYNOPSIS
         Handle a terminal resize event: update state, show "too small" or re-render.
     .DESCRIPTION
         Called by the main event loop when a resize token is dequeued.
-        Updates $DerekhState.TerminalWidth/Height and $DerekhState.Paused.
+        Updates $GuideState.TerminalWidth/Height and $GuideState.Paused.
         When below minimum (60×15): shows centered "Terminal too small" message.
         When restoring from too-small: unpauses and triggers a full re-render.
     .PARAMETER NewWidth
@@ -644,7 +709,7 @@ function Invoke-DhResize {
     .PARAMETER NewHeight
         New terminal height in rows.
     .PARAMETER State
-        The DerekhState hashtable (carries CurrentLayout, Paused, etc.).
+        The GuideState hashtable (carries CurrentLayout, Paused, etc.).
     .PARAMETER Theme
         The resolved theme hashtable.
     .PARAMETER Plan
@@ -662,18 +727,23 @@ function Invoke-DhResize {
     $State.TerminalHeight = $NewHeight
 
     $minW = 60
-    $minH = 15
+    $minH = 10
 
     if ($NewWidth -lt $minW -or $NewHeight -lt $minH) {
         $State.Paused = $true
 
+        $current = "Current: ${NewWidth}x${NewHeight}"
+        $needed  = "Resize to at least ${minW}x${minH} to resume"
+        $maxLen  = [Math]::Max($current.Length, $needed.Length)
+        $bar     = '+' + ('-' * ($maxLen + 4)) + '+'
         $msgLines = @(
-            '+--------------------------------------+',
-            '|  Terminal too small                  |',
-            ("|  Resize to at least ${minW}x${minH} to resume  |"),
-            '+--------------------------------------+'
+            $bar,
+            ('|  Terminal too small'.PadRight($bar.Length - 1) + '|'),
+            ('|  ' + $current.PadRight($maxLen) + '  |'),
+            ('|  ' + $needed.PadRight($maxLen)  + '  |'),
+            $bar
         )
-        Write-DhCentered -Lines $msgLines -Width $NewWidth -Height $NewHeight
+        Write-GuideCentered -Lines $msgLines -Width $NewWidth -Height $NewHeight
         return
     }
 
@@ -683,40 +753,43 @@ function Invoke-DhResize {
     }
 
     # Recompute layout and do a full re-render
-    $newLayout = Get-DhLayout -Width $NewWidth -Height $NewHeight -Theme $Theme
+    $newLayout = Get-GuideLayout -Width $NewWidth -Height $NewHeight -Theme $Theme
     $State.CurrentLayout = $newLayout
 
-    # Full re-render with new layout
-    try { [Console]::Clear() } catch { }
-    Render-DhHeader      -State $State -Theme $Theme -Layout $newLayout
-    Render-DhPhasesPane  -State $State -Theme $Theme -Layout $newLayout
-    Render-DhActivePane  -State $State -Theme $Theme -Layout $newLayout
+    # Full re-render with new layout. ANSI clear is more reliable than
+    # [Console]::Clear() under Windows Terminal — the latter sometimes leaves
+    # column-0 artifacts when re-entering after a resize.
+    # \e[2J = clear screen, \e[3J = clear scrollback, \e[H = cursor home.
+    try { [Console]::Write("$(Esc '2J')$(Esc '3J')$(Esc 'H')") } catch { }
+    Show-GuideHeader      -State $State -Theme $Theme -Layout $newLayout
+    Show-GuidePhasesPane  -State $State -Theme $Theme -Layout $newLayout
+    Show-GuideActivePane  -State $State -Theme $Theme -Layout $newLayout
 
     # In interactive (post-completion) mode, render with indices if that flag was set
     if ($State.ContainsKey('InteractiveMode') -and $State.InteractiveMode) {
-        Render-DhIssuesPane -State $State -Theme $Theme -Layout $newLayout -ShowIndices
+        Show-GuideIssuesPane -State $State -Theme $Theme -Layout $newLayout -ShowIndices
     } else {
-        Render-DhIssuesPane -State $State -Theme $Theme -Layout $newLayout
+        Show-GuideIssuesPane -State $State -Theme $Theme -Layout $newLayout
     }
-    Render-DhFooter      -State $State -Theme $Theme -Layout $newLayout
+    Show-GuideFooter      -State $State -Theme $Theme -Layout $newLayout
 
     # Restore footer text appropriate to current mode
     if ($State.ContainsKey('FooterText') -and $State.FooterText) {
-        Set-DhFooter -Text $State.FooterText -Layout $newLayout
+        Set-GuideFooter -Text $State.FooterText -Layout $newLayout
     }
 }
 
 # ── Phase G: Footer management ────────────────────────────────────────────────
 
-function Set-DhFooter {
+function Set-GuideFooter {
     <#
     .SYNOPSIS
         Write a new string to the footer region without a full re-render.
     .DESCRIPTION
         Positions cursor at the footer row, clears the line, writes the text
         in the theme's dim color, then hides cursor again.
-        Requires $State.CurrentLayout to be set (done by Invoke-DhResize or
-        the initial layout computation in Invoke-DhPlan).
+        Requires $State.CurrentLayout to be set (done by Invoke-GuideResize or
+        the initial layout computation in Invoke-GuidePlan).
     #>
     [CmdletBinding()]
     param(
@@ -737,17 +810,17 @@ function Set-DhFooter {
         [Console]::Write("`e[2K")
         [Console]::Write("`e[2m$Text`e[0m")
     } catch {
-        Write-Verbose "Set-DhFooter: footer write failed — $_"
+        Write-Verbose "Set-GuideFooter: footer write failed — $_"
     }
 }
 
-function Invoke-DhFooterFlash {
+function Invoke-GuideFooterFlash {
     <#
     .SYNOPSIS
         Flash a message in the footer for ~1 second, then revert — non-blocking.
     .DESCRIPTION
         Sets $State.FooterFlash. The main key loop checks this on each tick and
-        calls Set-DhFooter with the revert text when the duration elapses.
+        calls Set-GuideFooter with the revert text when the duration elapses.
         Does NOT use Start-Sleep.
     #>
     [CmdletBinding()]
@@ -766,5 +839,5 @@ function Invoke-DhFooterFlash {
         DurationMs = $DurationMs
     }
 
-    Set-DhFooter -Text $Message -Layout $Layout
+    Set-GuideFooter -Text $Message -Layout $Layout
 }

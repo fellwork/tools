@@ -1,4 +1,4 @@
-# derekh
+# guide
 
 Reusable TUI framework for Fellwork CLI tools. Renders a structured dashboard
 (phases on the left, active task and issues stacked on the right) with a Stardew
@@ -14,20 +14,20 @@ Three execution modes:
 ## Quick example
 
 ```powershell
-Import-Module ./derekh.psd1
+Import-Module ./guide.psd1
 
-$plan = New-DhPlan -Title "My Tool" -Subtitle (Get-Date -Format HH:mm:ss)
-$plan = Add-DhLoopPhase -Plan $plan -Name "Cloning" -Items $repos -Action {
+$plan = New-GuidePlan -Title "My Tool" -Subtitle (Get-Date -Format HH:mm:ss)
+$plan = Add-GuideLoopPhase -Plan $plan -Name "Cloning" -Items $repos -Action {
     param($r)
     git clone "https://github.com/fellwork/$r.git" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        return New-DhResult -Success $false -Message "$r failed" `
+        return New-GuideResult -Success $false -Message "$r failed" `
             -FixCommand "git clone https://github.com/fellwork/$r.git"
     }
-    return New-DhResult -Success $true -Message "$r cloned"
+    return New-GuideResult -Success $true -Message "$r cloned"
 }
 
-Invoke-DhPlan -Plan $plan
+Invoke-GuidePlan -Plan $plan
 ```
 
 ## Design

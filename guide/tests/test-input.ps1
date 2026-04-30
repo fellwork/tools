@@ -1,7 +1,7 @@
 #Requires -Version 7
 # test-input.ps1 — Unit tests for input.ps1.
 #
-# Test-DhKeyAvailable and Read-DhKey wrap [Console] I/O and cannot be unit-
+# Test-GuideKeyAvailable and Read-GuideKey wrap [Console] I/O and cannot be unit-
 # tested in a non-interactive context. They are SKIPPED here and verified by
 # the F5 manual smoke test.
 #
@@ -55,164 +55,164 @@ function Skip-Test {
 
 # ── Load module ───────────────────────────────────────────────────────────────
 
-$manifestPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../derekh.psd1'))
+$manifestPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../guide.psd1'))
 Import-Module $manifestPath -Force -ErrorAction Stop
 
 # ── SKIP: terminal-dependent functions ───────────────────────────────────────
 
-Skip-Test 'Test-DhKeyAvailable returns bool'   'requires real TTY input — see F5 manual smoke test'
-Skip-Test 'Read-DhKey returns ConsoleKeyInfo'  'requires real TTY input — see F5 manual smoke test'
+Skip-Test 'Test-GuideKeyAvailable returns bool'   'requires real TTY input — see F5 manual smoke test'
+Skip-Test 'Read-GuideKey returns ConsoleKeyInfo'  'requires real TTY input — see F5 manual smoke test'
 
-# ── Registry: Register-DhKeyHandler ──────────────────────────────────────────
+# ── Registry: Register-GuideKeyHandler ──────────────────────────────────────────
 
-Clear-DhKeyHandlers
+Clear-GuideKeyHandlers
 
 $fired = $false
-Register-DhKeyHandler -Key 'Q' -Action { $script:fired = $true }
-$handlers = Get-DhKeyHandlers
+Register-GuideKeyHandler -Key 'Q' -Action { $script:fired = $true }
+$handlers = Get-GuideKeyHandlers
 
-Assert-True 'Register-DhKeyHandler: key added to registry' `
+Assert-True 'Register-GuideKeyHandler: key added to registry' `
     ($handlers.ContainsKey('Q')) "registry keys: $($handlers.Keys -join ', ')"
 
-Assert-True 'Register-DhKeyHandler: value is scriptblock' `
+Assert-True 'Register-GuideKeyHandler: value is scriptblock' `
     ($handlers['Q'] -is [scriptblock]) "got: $($handlers['Q'].GetType().Name)"
 
 # ── Registry: case normalization ──────────────────────────────────────────────
 
-Clear-DhKeyHandlers
-Register-DhKeyHandler -Key 'escape' -Action { }
-$handlers = Get-DhKeyHandlers
+Clear-GuideKeyHandlers
+Register-GuideKeyHandler -Key 'escape' -Action { }
+$handlers = Get-GuideKeyHandlers
 
-Assert-True 'Register-DhKeyHandler: lowercase key normalized to uppercase' `
+Assert-True 'Register-GuideKeyHandler: lowercase key normalized to uppercase' `
     ($handlers.ContainsKey('ESCAPE')) "keys: $($handlers.Keys -join ', ')"
 
 # ── Registry: overwrite existing binding ──────────────────────────────────────
 
-Clear-DhKeyHandlers
-Register-DhKeyHandler -Key 'Q' -Action { 'first' }
-Register-DhKeyHandler -Key 'Q' -Action { 'second' }
-$handlers = Get-DhKeyHandlers
+Clear-GuideKeyHandlers
+Register-GuideKeyHandler -Key 'Q' -Action { 'first' }
+Register-GuideKeyHandler -Key 'Q' -Action { 'second' }
+$handlers = Get-GuideKeyHandlers
 
-Assert-Equal 'Register-DhKeyHandler: second registration overwrites first' `
+Assert-Equal 'Register-GuideKeyHandler: second registration overwrites first' `
     1 $handlers.Count
 
-# ── Unregister-DhKeyHandler ───────────────────────────────────────────────────
+# ── Unregister-GuideKeyHandler ───────────────────────────────────────────────────
 
-Clear-DhKeyHandlers
-Register-DhKeyHandler -Key 'Enter' -Action { }
-Unregister-DhKeyHandler -Key 'Enter'
-$handlers = Get-DhKeyHandlers
+Clear-GuideKeyHandlers
+Register-GuideKeyHandler -Key 'Enter' -Action { }
+Unregister-GuideKeyHandler -Key 'Enter'
+$handlers = Get-GuideKeyHandlers
 
-Assert-True 'Unregister-DhKeyHandler: key removed' `
+Assert-True 'Unregister-GuideKeyHandler: key removed' `
     (-not $handlers.ContainsKey('ENTER')) "keys still present: $($handlers.Keys -join ', ')"
 
-Assert-NoThrow 'Unregister-DhKeyHandler: removing non-existent key does not throw' {
-    Unregister-DhKeyHandler -Key 'Z'
+Assert-NoThrow 'Unregister-GuideKeyHandler: removing non-existent key does not throw' {
+    Unregister-GuideKeyHandler -Key 'Z'
 }
 
-# ── Clear-DhKeyHandlers ───────────────────────────────────────────────────────
+# ── Clear-GuideKeyHandlers ───────────────────────────────────────────────────────
 
-Clear-DhKeyHandlers
-Register-DhKeyHandler -Key 'Q'      -Action { }
-Register-DhKeyHandler -Key 'Escape' -Action { }
-Clear-DhKeyHandlers
-$handlers = Get-DhKeyHandlers
+Clear-GuideKeyHandlers
+Register-GuideKeyHandler -Key 'Q'      -Action { }
+Register-GuideKeyHandler -Key 'Escape' -Action { }
+Clear-GuideKeyHandlers
+$handlers = Get-GuideKeyHandlers
 
-Assert-Equal 'Clear-DhKeyHandlers: empties registry' 0 $handlers.Count
+Assert-Equal 'Clear-GuideKeyHandlers: empties registry' 0 $handlers.Count
 
-# ── Invoke-DhKeyDispatch: matching handler fires ───────────────────────────────
+# ── Invoke-GuideKeyDispatch: matching handler fires ───────────────────────────────
 
-Clear-DhKeyHandlers
+Clear-GuideKeyHandlers
 $dispatchResult = 0
-Register-DhKeyHandler -Key 'Q' -Action { $script:dispatchResult += 1 }
+Register-GuideKeyHandler -Key 'Q' -Action { $script:dispatchResult += 1 }
 
 # Simulate a ConsoleKeyInfo for 'Q'.
 # [ConsoleKeyInfo]::new(char, ConsoleKey, shift, alt, control)
 $fakeKey = [System.ConsoleKeyInfo]::new('q', [System.ConsoleKey]::Q, $false, $false, $false)
 
-Invoke-DhKeyDispatch -KeyInfo $fakeKey
+Invoke-GuideKeyDispatch -KeyInfo $fakeKey
 
-Assert-Equal 'Invoke-DhKeyDispatch: handler fires on matching key' 1 $script:dispatchResult
+Assert-Equal 'Invoke-GuideKeyDispatch: handler fires on matching key' 1 $script:dispatchResult
 
-# ── Invoke-DhKeyDispatch: unregistered key does nothing ──────────────────────
+# ── Invoke-GuideKeyDispatch: unregistered key does nothing ──────────────────────
 
-Clear-DhKeyHandlers
+Clear-GuideKeyHandlers
 $unexpectedFire = $false
 $fakeEscape = [System.ConsoleKeyInfo]::new([char]27, [System.ConsoleKey]::Escape, $false, $false, $false)
 
-Assert-NoThrow 'Invoke-DhKeyDispatch: unregistered key does not throw' {
-    Invoke-DhKeyDispatch -KeyInfo $fakeEscape
+Assert-NoThrow 'Invoke-GuideKeyDispatch: unregistered key does not throw' {
+    Invoke-GuideKeyDispatch -KeyInfo $fakeEscape
 }
 
-Assert-True 'Invoke-DhKeyDispatch: unregistered key fires no handler' `
+Assert-True 'Invoke-GuideKeyDispatch: unregistered key fires no handler' `
     (-not $unexpectedFire)
 
-# ── Invoke-DhKeyDispatch: handler exception is swallowed (not rethrown) ───────
+# ── Invoke-GuideKeyDispatch: handler exception is swallowed (not rethrown) ───────
 
-Clear-DhKeyHandlers
-Register-DhKeyHandler -Key 'Q' -Action { throw 'handler error' }
+Clear-GuideKeyHandlers
+Register-GuideKeyHandler -Key 'Q' -Action { throw 'handler error' }
 $fakeQ = [System.ConsoleKeyInfo]::new('q', [System.ConsoleKey]::Q, $false, $false, $false)
 
-Assert-NoThrow 'Invoke-DhKeyDispatch: handler exception does not propagate' {
-    Invoke-DhKeyDispatch -KeyInfo $fakeQ
+Assert-NoThrow 'Invoke-GuideKeyDispatch: handler exception does not propagate' {
+    Invoke-GuideKeyDispatch -KeyInfo $fakeQ
 }
 
-# ── Invoke-DhKeyDispatch: multiple handlers registered, correct one fires ──────
+# ── Invoke-GuideKeyDispatch: multiple handlers registered, correct one fires ──────
 
-Clear-DhKeyHandlers
+Clear-GuideKeyHandlers
 $qFired     = $false
 $enterFired = $false
-Register-DhKeyHandler -Key 'Q'     -Action { $script:qFired     = $true }
-Register-DhKeyHandler -Key 'Enter' -Action { $script:enterFired = $true }
+Register-GuideKeyHandler -Key 'Q'     -Action { $script:qFired     = $true }
+Register-GuideKeyHandler -Key 'Enter' -Action { $script:enterFired = $true }
 
 $fakeEnter = [System.ConsoleKeyInfo]::new([char]13, [System.ConsoleKey]::Enter, $false, $false, $false)
-Invoke-DhKeyDispatch -KeyInfo $fakeEnter
+Invoke-GuideKeyDispatch -KeyInfo $fakeEnter
 
-Assert-True  'Invoke-DhKeyDispatch: Enter handler fires'          $script:enterFired
-Assert-True  'Invoke-DhKeyDispatch: Q handler does not fire for Enter' (-not $script:qFired)
+Assert-True  'Invoke-GuideKeyDispatch: Enter handler fires'          $script:enterFired
+Assert-True  'Invoke-GuideKeyDispatch: Q handler does not fire for Enter' (-not $script:qFired)
 
-# ── Invoke-DhKeyDispatch: handler receives KeyInfo as argument ────────────────
+# ── Invoke-GuideKeyDispatch: handler receives KeyInfo as argument ────────────────
 
-Clear-DhKeyHandlers
+Clear-GuideKeyHandlers
 $receivedKey = $null
-Register-DhKeyHandler -Key 'Q' -Action { param($k) $script:receivedKey = $k }
+Register-GuideKeyHandler -Key 'Q' -Action { param($k) $script:receivedKey = $k }
 
 $fakeQ2 = [System.ConsoleKeyInfo]::new('q', [System.ConsoleKey]::Q, $false, $false, $false)
-Invoke-DhKeyDispatch -KeyInfo $fakeQ2
+Invoke-GuideKeyDispatch -KeyInfo $fakeQ2
 
-Assert-True 'Invoke-DhKeyDispatch: handler receives KeyInfo as argument' `
+Assert-True 'Invoke-GuideKeyDispatch: handler receives KeyInfo as argument' `
     ($null -ne $script:receivedKey -and $script:receivedKey.Key -eq [System.ConsoleKey]::Q)
 
-# ── Get-DhKeyHandlers returns a CLONE (mutation doesn't affect registry) ──────
+# ── Get-GuideKeyHandlers returns a CLONE (mutation doesn't affect registry) ──────
 
-Clear-DhKeyHandlers
-Register-DhKeyHandler -Key 'Q' -Action { }
-$clone = Get-DhKeyHandlers
+Clear-GuideKeyHandlers
+Register-GuideKeyHandler -Key 'Q' -Action { }
+$clone = Get-GuideKeyHandlers
 $clone['FAKE'] = { }
 
-$fresh = Get-DhKeyHandlers
-Assert-True 'Get-DhKeyHandlers returns clone, not live reference' `
+$fresh = Get-GuideKeyHandlers
+Assert-True 'Get-GuideKeyHandlers returns clone, not live reference' `
     (-not $fresh.ContainsKey('FAKE'))
 
-# ── Phase G: Enter-DhInteractiveMode ─────────────────────────────────────────
+# ── Phase G: Enter-GuideInteractiveMode ─────────────────────────────────────────
 # Test that the function is defined and that the digit-handler registration
 # loop properly captures values (not references). Terminal-touching behavior
 # is verified by the manual smoke test.
 
-Assert-True 'Enter-DhInteractiveMode is defined' `
-    ($null -ne (Get-Command -Name 'Enter-DhInteractiveMode' -ErrorAction SilentlyContinue)) `
+Assert-True 'Enter-GuideInteractiveMode is defined' `
+    ($null -ne (Get-Command -Name 'Enter-GuideInteractiveMode' -ErrorAction SilentlyContinue)) `
     'function not found in session'
 
-# Test the digit handler capture-by-value mechanic independent of Enter-DhInteractiveMode.
-# Register D1-D9 using [scriptblock]::Create (same technique as Enter-DhInteractiveMode).
-Clear-DhKeyHandlers
+# Test the digit handler capture-by-value mechanic independent of Enter-GuideInteractiveMode.
+# Register D1-D9 using [scriptblock]::Create (same technique as Enter-GuideInteractiveMode).
+Clear-GuideKeyHandlers
 for ($n = 1; $n -le 9; $n++) {
     $captured = $n
     # Each handler stores its captured value in a shared array (module-safe approach)
     $h = [scriptblock]::Create("param(`$k) " + '$script:_G_captureArr[' + $($captured - 1) + "] = $($captured)")
-    Register-DhKeyHandler -Key "D$captured" -Action $h
+    Register-GuideKeyHandler -Key "D$captured" -Action $h
 }
-$registeredHandlers = Get-DhKeyHandlers
+$registeredHandlers = Get-GuideKeyHandlers
 
 Assert-True 'Phase G: digit handler registration loop covers D1-D9' `
     ((1..9 | Where-Object { $registeredHandlers.ContainsKey("D$_") }).Count -eq 9) `
@@ -229,9 +229,9 @@ Assert-True 'Phase G: D1 and D5 handlers are distinct scriptblocks' `
 Assert-True 'Phase G: D5 and D9 handlers are distinct scriptblocks' `
     ($d5Handler.ToString() -ne $d9Handler.ToString()) "handlers are identical — closure capture may be broken"
 
-Clear-DhKeyHandlers
+Clear-GuideKeyHandlers
 
-# ── Phase G: Invoke-DhFooterFlash sets FooterFlash on state ──────────────────
+# ── Phase G: Invoke-GuideFooterFlash sets FooterFlash on state ──────────────────
 # Build a minimal layout and state directly (private functions not available via module export).
 
 $flashLayout = @{
@@ -260,20 +260,20 @@ $flashState = @{
 $isTtyForG = -not [Console]::IsOutputRedirected
 
 if ($isTtyForG) {
-    Assert-NoThrow 'Invoke-DhFooterFlash does not throw in TTY' {
-        Invoke-DhFooterFlash -Message 'Test flash' -State $flashState -Layout $flashLayout
+    Assert-NoThrow 'Invoke-GuideFooterFlash does not throw in TTY' {
+        Invoke-GuideFooterFlash -Message 'Test flash' -State $flashState -Layout $flashLayout
     }
-    Assert-True 'Invoke-DhFooterFlash sets FooterFlash on state' `
+    Assert-True 'Invoke-GuideFooterFlash sets FooterFlash on state' `
         ($null -ne $flashState.FooterFlash) 'FooterFlash was null'
-    Assert-True 'Invoke-DhFooterFlash FooterFlash has correct Message' `
+    Assert-True 'Invoke-GuideFooterFlash FooterFlash has correct Message' `
         ($flashState.FooterFlash.Message -eq 'Test flash') "got: $($flashState.FooterFlash.Message)"
-    Assert-True 'Invoke-DhFooterFlash FooterFlash has running Stopwatch' `
+    Assert-True 'Invoke-GuideFooterFlash FooterFlash has running Stopwatch' `
         ($flashState.FooterFlash.SW -is [System.Diagnostics.Stopwatch]) 'SW not a Stopwatch'
 } else {
-    Skip-Test 'Invoke-DhFooterFlash does not throw in TTY'              'requires TTY for Set-DhFooter'
-    Skip-Test 'Invoke-DhFooterFlash sets FooterFlash on state'          'requires TTY for Set-DhFooter'
-    Skip-Test 'Invoke-DhFooterFlash FooterFlash has correct Message'    'requires TTY'
-    Skip-Test 'Invoke-DhFooterFlash FooterFlash has running Stopwatch'  'requires TTY'
+    Skip-Test 'Invoke-GuideFooterFlash does not throw in TTY'              'requires TTY for Set-GuideFooter'
+    Skip-Test 'Invoke-GuideFooterFlash sets FooterFlash on state'          'requires TTY for Set-GuideFooter'
+    Skip-Test 'Invoke-GuideFooterFlash FooterFlash has correct Message'    'requires TTY'
+    Skip-Test 'Invoke-GuideFooterFlash FooterFlash has running Stopwatch'  'requires TTY'
 }
 
 # ── Summary ───────────────────────────────────────────────────────────────────

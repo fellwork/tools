@@ -1,5 +1,5 @@
 # Skeleton test — verifies the module loads, the manifest is correct, and the
-# only Phase A function (Get-DhVersion) returns the right value. Replaced /
+# only Phase A function (Get-GuideVersion) returns the right value. Replaced /
 # extended by real per-feature tests as Phases B–H land.
 
 $failures = 0
@@ -17,38 +17,38 @@ function Assert-True($cond, $message) {
 }
 
 $moduleDir = Resolve-Path "$PSScriptRoot/.."
-$manifestPath = Join-Path $moduleDir 'derekh.psd1'
+$manifestPath = Join-Path $moduleDir 'guide.psd1'
 
 # Manifest exists
 Assert-True (Test-Path $manifestPath) "manifest exists at $manifestPath"
 
 # Module loads
 Import-Module $manifestPath -Force -ErrorAction Stop
-$mod = Get-Module derekh
+$mod = Get-Module guide
 Assert-True ($null -ne $mod) "module loads"
-Assert-Equal 'derekh' $mod.Name "module name is derekh"
+Assert-Equal 'guide' $mod.Name "module name is guide"
 
 # All 9 declared exports are visible
 $expected = @(
-    'Invoke-DhPlan'
-    'New-DhPlan'
-    'Add-DhLoopPhase'
-    'Add-DhSinglePhase'
-    'New-DhResult'
-    'New-DhAlert'
-    'Get-DhTheme'
-    'Get-DhVersion'
-    'Test-DhEnvironment'
+    'Invoke-GuidePlan'
+    'New-GuidePlan'
+    'Add-GuideLoopPhase'
+    'Add-GuideSinglePhase'
+    'New-GuideResult'
+    'New-GuideAlert'
+    'Get-GuideTheme'
+    'Get-GuideVersion'
+    'Test-GuideEnvironment'
 )
 foreach ($fn in $expected) {
-    $cmd = Get-Command -Module derekh -Name $fn -ErrorAction SilentlyContinue
+    $cmd = Get-Command -Module guide -Name $fn -ErrorAction SilentlyContinue
     Assert-True ($null -ne $cmd) "exported function: $fn"
 }
 
-# Get-DhVersion returns a real semver-shaped string
-$ver = Get-DhVersion
-Assert-True ($ver -match '^\d+\.\d+\.\d+$') "Get-DhVersion returns semver: $ver"
-Assert-Equal '0.1.0' $ver "Get-DhVersion returns 0.1.0"
+# Get-GuideVersion returns a real semver-shaped string
+$ver = Get-GuideVersion
+Assert-True ($ver -match '^\d+\.\d+\.\d+$') "Get-GuideVersion returns semver: $ver"
+Assert-Equal '0.1.0' $ver "Get-GuideVersion returns 0.1.0"
 
 if ($failures -eq 0) {
     Write-Host "`nAll skeleton tests passed." -ForegroundColor Green

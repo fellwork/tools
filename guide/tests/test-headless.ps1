@@ -38,15 +38,15 @@ function Assert-True {
     }
 }
 
-# ── D1: ConvertTo-DhStateJson field correctness ──────────────────────────────
+# ── D1: ConvertTo-GuideStateJson field correctness ──────────────────────────────
 
 $fixedTs    = "2026-04-26T12:00:00Z"
 $fixedTsEnd = "2026-04-26T12:00:05Z"
 
-# Build state the correct way: New-DhState -Title -Subtitle, then Add-DhStatePhase
-$state = New-DhState -Title "Test Plan" -Subtitle "12:00:00"
-Add-DhStatePhase -State $state -Name "Phase One" -Type "loop"
-Add-DhStatePhase -State $state -Name "Phase Two" -Type "single"
+# Build state the correct way: New-GuideState -Title -Subtitle, then Add-GuideStatePhase
+$state = New-GuideState -Title "Test Plan" -Subtitle "12:00:00"
+Add-GuideStatePhase -State $state -Name "Phase One" -Type "loop"
+Add-GuideStatePhase -State $state -Name "Phase Two" -Type "single"
 
 # Manually set timestamps (simulate completed run)
 $state.StartedAt   = $fixedTs
@@ -59,7 +59,7 @@ $null = $state.Phases[0].Items.Add(@{ Name = "a"; Status = "ok"; Message = "done
 $null = $state.Phases[0].Items.Add(@{ Name = "b"; Status = "ok"; Message = "done" })
 $state.Phases[1].Status = "ok"
 
-$json   = ConvertTo-DhStateJson -State $state -OverrideStartedAt $fixedTs -OverrideCompletedAt $fixedTsEnd
+$json   = ConvertTo-GuideStateJson -State $state -OverrideStartedAt $fixedTs -OverrideCompletedAt $fixedTsEnd
 # Use -AsHashtable to prevent ConvertFrom-Json auto-parsing ISO dates into [datetime]
 $parsed = $json | ConvertFrom-Json -AsHashtable
 
@@ -88,8 +88,8 @@ Assert-Equal "D1: summary.warnings"          0             $parsed.summary.warni
 Assert-Equal "D1: summary.failures"          0             $parsed.summary.failures
 
 # D1: issues serialization with null fields
-$state2 = New-DhState -Title "Issue Plan"
-Add-DhStatePhase -State $state2 -Name "Ph" -Type "single"
+$state2 = New-GuideState -Title "Issue Plan"
+Add-GuideStatePhase -State $state2 -Name "Ph" -Type "single"
 $state2.StartedAt   = $fixedTs
 $state2.CompletedAt = $fixedTsEnd
 $state2.ExitCode    = 1
@@ -103,7 +103,7 @@ $null = $state2.Issues.Add(@{
 })
 $state2.Phases[0].Status = "warning"
 
-$json2   = ConvertTo-DhStateJson -State $state2 -OverrideStartedAt $fixedTs -OverrideCompletedAt $fixedTsEnd
+$json2   = ConvertTo-GuideStateJson -State $state2 -OverrideStartedAt $fixedTs -OverrideCompletedAt $fixedTsEnd
 $parsed2 = $json2 | ConvertFrom-Json -AsHashtable
 
 Assert-Equal "D1: issue[0].phase"       "Ph"                      $parsed2.issues[0].phase
@@ -128,12 +128,12 @@ try {
 
 Write-Host ""
 
-# ── D2: Invoke-DhPlan -Headless subprocess integration ───────────────────────
+# ── D2: Invoke-GuidePlan -Headless subprocess integration ───────────────────────
 # Use a helper plan script to avoid needing a real module import in the test.
 # The helper script dot-sources the lib files directly.
 
 # Embed the absolute module path so the helper works from $env:TEMP
-$_derekhModulePath = (Resolve-Path "$moduleRoot/derekh.psm1").Path -replace '\\', '/'
+$_guideModulePath = (Resolve-Path "$moduleRoot/guide.psm1").Path -replace '\\', '/'
 
 $helperScript = @"
 param([switch]`$Headless, [switch]`$NoTui)
@@ -141,7 +141,7 @@ Set-StrictMode -Version Latest
 `$ErrorActionPreference = 'Stop'
 
 # Use Import-Module with an absolute path so this works from any temp directory.
-Import-Module '$_derekhModulePath' -Force -DisableNameChecking
+Import-Module '$_guideModulePath' -Force -DisableNameChecking
 
 `$plan = @{
     Title    = 'D2 Test Plan'
@@ -159,10 +159,10 @@ Import-Module '$_derekhModulePath' -Force -DisableNameChecking
     )
 }
 
-Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '2026-01-01T00:00:00Z'
+Invoke-GuidePlan -Plan `$plan -Headless -FixedTimeForTests '2026-01-01T00:00:00Z'
 "@
 
-$helperPath = Join-Path $env:TEMP "dh-d2-helper-$(Get-Random).ps1"
+$helperPath = Join-Path $env:TEMP "guide-d2-helper-$(Get-Random).ps1"
 Set-Content -Path $helperPath -Value $helperScript -Encoding UTF8
 
 try {
@@ -189,13 +189,13 @@ try {
 
 $FIXED_TS          = "2026-01-01T00:00:00Z"
 # Absolute path injected into each subprocess script so it works from $env:TEMP
-$_derekhModPath    = (Resolve-Path "$moduleRoot/derekh.psm1").Path -replace '\\', '/'
+$_guideModPath    = (Resolve-Path "$moduleRoot/guide.psm1").Path -replace '\\', '/'
 
 function Invoke-HeadlessScenario {
     param(
         [Parameter(Mandatory)][string]$ScriptContent
     )
-    $tmpScript = Join-Path $env:TEMP "dh-d3-$(Get-Random).ps1"
+    $tmpScript = Join-Path $env:TEMP "guide-d3-$(Get-Random).ps1"
     Set-Content -Path $tmpScript -Value $ScriptContent -Encoding UTF8
     try {
         $raw      = pwsh -NoProfile -File $tmpScript 2>&1
@@ -250,7 +250,7 @@ if (-not (Test-Path $snapshotDir)) { $null = New-Item -ItemType Directory -Path 
 # ── Scenario: all-success ─────────────────────────────────────────────────────
 $allSuccessScript = @"
 `$ErrorActionPreference = 'Stop'
-Import-Module '$_derekhModPath' -Force -DisableNameChecking
+Import-Module '$_guideModPath' -Force -DisableNameChecking
 `$plan = @{
     Title    = 'All Success'
     Subtitle = '00:00:00'
@@ -261,7 +261,7 @@ Import-Module '$_derekhModPath' -Force -DisableNameChecking
            Action={ param(`$item); @{ Success=`$true; Message="`$item ok" } } }
     )
 }
-Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+Invoke-GuidePlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
 "@
 
 $result = Invoke-HeadlessScenario -ScriptContent $allSuccessScript
@@ -275,7 +275,7 @@ Compare-HeadlessSnapshot -Name "all-success" -ActualJson $result.Output
 # ── Scenario: all-fail ────────────────────────────────────────────────────────
 $allFailScript = @"
 `$ErrorActionPreference = 'Stop'
-Import-Module '$_derekhModPath' -Force -DisableNameChecking
+Import-Module '$_guideModPath' -Force -DisableNameChecking
 `$plan = @{
     Title  = 'All Fail'
     Phases = @(
@@ -285,7 +285,7 @@ Import-Module '$_derekhModPath' -Force -DisableNameChecking
                   FixCommand="npm install `$item" } } }
     )
 }
-Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+Invoke-GuidePlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
 "@
 
 $result = Invoke-HeadlessScenario -ScriptContent $allFailScript
@@ -300,7 +300,7 @@ Compare-HeadlessSnapshot -Name "all-fail" -ActualJson $result.Output
 # ── Scenario: mixed-alerts ────────────────────────────────────────────────────
 $mixedScript = @"
 `$ErrorActionPreference = 'Stop'
-Import-Module '$_derekhModPath' -Force -DisableNameChecking
+Import-Module '$_guideModPath' -Force -DisableNameChecking
 `$plan = @{
     Title  = 'Mixed Alerts'
     Phases = @(
@@ -316,7 +316,7 @@ Import-Module '$_derekhModPath' -Force -DisableNameChecking
            } }
     )
 }
-Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+Invoke-GuidePlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
 "@
 
 $result = Invoke-HeadlessScenario -ScriptContent $mixedScript
@@ -332,7 +332,7 @@ Compare-HeadlessSnapshot -Name "mixed-alerts" -ActualJson $result.Output
 # ── Scenario: single-shot ─────────────────────────────────────────────────────
 $singleScript = @"
 `$ErrorActionPreference = 'Stop'
-Import-Module '$_derekhModPath' -Force -DisableNameChecking
+Import-Module '$_guideModPath' -Force -DisableNameChecking
 `$plan = @{
     Title  = 'Single Shot'
     Phases = @(
@@ -343,7 +343,7 @@ Import-Module '$_derekhModPath' -Force -DisableNameChecking
            } }
     )
 }
-Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+Invoke-GuidePlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
 "@
 
 $result = Invoke-HeadlessScenario -ScriptContent $singleScript
@@ -358,9 +358,9 @@ Compare-HeadlessSnapshot -Name "single-shot" -ActualJson $result.Output
 # ── Scenario: empty plan ──────────────────────────────────────────────────────
 $emptyScript = @"
 `$ErrorActionPreference = 'Stop'
-Import-Module '$_derekhModPath' -Force -DisableNameChecking
+Import-Module '$_guideModPath' -Force -DisableNameChecking
 `$plan = @{ Title = 'Empty'; Phases = @() }
-Invoke-DhPlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
+Invoke-GuidePlan -Plan `$plan -Headless -FixedTimeForTests '$FIXED_TS'
 "@
 
 $result = Invoke-HeadlessScenario -ScriptContent $emptyScript

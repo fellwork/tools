@@ -8,20 +8,20 @@
 #              → wl-copy (fallback for Wayland)
 #
 # Public surface:
-#   Test-DhClipboardAvailable [-Platform <string>]  — capability check
-#   Set-DhClipboard -Text <string> [-Platform <string>]  — copy to clipboard
+#   Test-GuideClipboardAvailable [-Platform <string>]  — capability check
+#   Set-GuideClipboard -Text <string> [-Platform <string>]  — copy to clipboard
 #
 # Both functions accept an optional -Platform override ('Windows'|'macOS'|'Linux')
 # for testing without actually switching OS. Defaults to $IsWindows/$IsMacOS/$IsLinux.
 #
-# Set-DhClipboard returns $true on success, $false if no clipboard tool is available.
+# Set-GuideClipboard returns $true on success, $false if no clipboard tool is available.
 # It never throws — clipboard failure is degraded UX, not a fatal error.
 
 $ErrorActionPreference = 'Stop'
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-function script:_Resolve-DhPlatform {
+function script:_Resolve-GuidePlatform {
     param([string]$Platform)
     if ($Platform) { return $Platform }
     if ($IsWindows) { return 'Windows' }
@@ -36,7 +36,7 @@ function script:_Command-Exists {
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-function Test-DhClipboardAvailable {
+function Test-GuideClipboardAvailable {
     <#
     .SYNOPSIS
         Returns $true if a clipboard mechanism is available on this platform.
@@ -48,7 +48,7 @@ function Test-DhClipboardAvailable {
         [string]$Platform = ''
     )
 
-    $os = _Resolve-DhPlatform $Platform
+    $os = _Resolve-GuidePlatform $Platform
 
     switch ($os) {
         'Windows' {
@@ -67,7 +67,7 @@ function Test-DhClipboardAvailable {
     }
 }
 
-function Set-DhClipboard {
+function Set-GuideClipboard {
     <#
     .SYNOPSIS
         Copy text to the system clipboard.
@@ -87,7 +87,7 @@ function Set-DhClipboard {
         [string]$Platform = ''
     )
 
-    $os = _Resolve-DhPlatform $Platform
+    $os = _Resolve-GuidePlatform $Platform
 
     try {
         switch ($os) {
@@ -118,7 +118,7 @@ function Set-DhClipboard {
             }
         }
     } catch {
-        Write-Verbose "Set-DhClipboard: clipboard operation failed — $_"
+        Write-Verbose "Set-GuideClipboard: clipboard operation failed — $_"
         return $false
     }
 }

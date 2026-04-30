@@ -1,5 +1,5 @@
 #Requires -Version 7
-# tests/manual-smoke.ps1 — Derekh Phase G manual TUI smoke test.
+# tests/manual-smoke.ps1 — Guide Phase G manual TUI smoke test.
 #
 # ══════════════════════════════════════════════════════════════════════════════
 # MANUAL RUN ONLY — do NOT add to run-all.ps1 or CI.
@@ -11,7 +11,7 @@
 # Requirements:
 #   - Terminal at least 80x24 (wider is fine; resize testing starts bigger)
 #   - UTF-8 capable terminal (Windows Terminal, iTerm2, Ghostty, etc.)
-#   - Module imported from ../derekh.psd1 (script does this automatically)
+#   - Module imported from ../guide.psd1 (script does this automatically)
 #
 # ══════════════════════════════════════════════════════════════════════════════
 #
@@ -19,7 +19,7 @@
 #
 #   [ ] 1. INITIAL RENDER
 #         The TUI opens in an alternate screen buffer.
-#         Header shows: "Derekh Smoke Test" + timestamp subtitle.
+#         Header shows: "Guide Smoke Test" + timestamp subtitle.
 #         Left pane shows 4 phases: all start in pending (○) state.
 #         Right pane (issues) is empty.
 #         Footer shows: "[q] quit"
@@ -93,10 +93,10 @@ $ErrorActionPreference = 'Stop'
 
 # ── Import the module ─────────────────────────────────────────────────────────
 $moduleRoot = Join-Path $PSScriptRoot '..'
-$manifest   = Join-Path $moduleRoot 'derekh.psd1'
+$manifest   = Join-Path $moduleRoot 'guide.psd1'
 
 if (-not (Test-Path $manifest)) {
-    Write-Error "Cannot find derekh.psd1 at '$manifest'. Run from derekh/tests/."
+    Write-Error "Cannot find guide.psd1 at '$manifest'. Run from guide/tests/."
     exit 1
 }
 
@@ -108,26 +108,26 @@ Import-Module $manifest -Force
 # All actions use Start-Sleep to simulate work and return known results.
 # The exact issues, severities, and FixCommands are part of the fixture.
 
-$plan = New-DhPlan -Title 'Derekh Smoke Test' -Subtitle (Get-Date -Format 'HH:mm:ss')
+$plan = New-GuidePlan -Title 'Guide Smoke Test' -Subtitle (Get-Date -Format 'HH:mm:ss')
 
 # ── Phase 1: Loop — "Clone repos" ─────────────────────────────────────────────
 # api  → success
 # web  → success
 # ops  → warning with FixCommand (becomes issue [1] in interactive mode)
 
-$plan = Add-DhLoopPhase -Plan $plan -Name 'Clone repos' -Items @('api', 'web', 'ops') -Action {
+$plan = Add-GuideLoopPhase -Plan $plan -Name 'Clone repos' -Items @('api', 'web', 'ops') -Action {
     param($repo)
     Start-Sleep -Milliseconds 400   # simulate clone time
 
     switch ($repo) {
         'api' {
-            return New-DhResult -Success $true -Message 'api: already cloned'
+            return New-GuideResult -Success $true -Message 'api: already cloned'
         }
         'web' {
-            return New-DhResult -Success $true -Message 'web: already cloned'
+            return New-GuideResult -Success $true -Message 'web: already cloned'
         }
         'ops' {
-            return New-DhResult -Success $true `
+            return New-GuideResult -Success $true `
                 -Severity 'warning' `
                 -Message 'ops clone slow — retried once' `
                 -FixCommand 'git clone https://github.com/fellwork/ops.git --depth 1'
@@ -140,13 +140,13 @@ $plan = Add-DhLoopPhase -Plan $plan -Name 'Clone repos' -Items @('api', 'web', '
 # Alert 1: wrangler not installed (FixCommand present)    → issue [2]
 # Alert 2: node version too old  (no FixCommand)          → issue [3]
 
-$plan = Add-DhSinglePhase -Plan $plan -Name 'Check prerequisites' -Action {
+$plan = Add-GuideSinglePhase -Plan $plan -Name 'Check prerequisites' -Action {
     Start-Sleep -Milliseconds 500   # simulate prerequisite check
-    return New-DhResult -Success $true -Alerts @(
-        (New-DhAlert -Severity 'warning' `
+    return New-GuideResult -Success $true -Alerts @(
+        (New-GuideAlert -Severity 'warning' `
             -Message 'wrangler not installed' `
             -FixCommand 'npm install -g wrangler'),
-        (New-DhAlert -Severity 'warning' `
+        (New-GuideAlert -Severity 'warning' `
             -Message 'node version is 18, recommend 20')
             # intentionally NO -FixCommand to exercise "No command to copy" path
     )
@@ -155,18 +155,18 @@ $plan = Add-DhSinglePhase -Plan $plan -Name 'Check prerequisites' -Action {
 # ── Phase 3: Single — "Run migrations" ────────────────────────────────────────
 # Succeeds with no issues.
 
-$plan = Add-DhSinglePhase -Plan $plan -Name 'Run migrations' -Action {
+$plan = Add-GuideSinglePhase -Plan $plan -Name 'Run migrations' -Action {
     Start-Sleep -Milliseconds 300
-    return New-DhResult -Success $true -Message 'All migrations applied'
+    return New-GuideResult -Success $true -Message 'All migrations applied'
 }
 
 # ── Phase 4: Single — "Verify env" ────────────────────────────────────────────
 # Fails with a FixCommand. → issue [4]
 # This causes plan exit code 2 (hard failure).
 
-$plan = Add-DhSinglePhase -Plan $plan -Name 'Verify env' -Action {
+$plan = Add-GuideSinglePhase -Plan $plan -Name 'Verify env' -Action {
     Start-Sleep -Milliseconds 200
-    return New-DhResult -Success $false `
+    return New-GuideResult -Success $false `
         -Message 'DATABASE_URL missing' `
         -FixCommand 'cp .env.example .env' `
         -Animal 'owl'
@@ -174,14 +174,14 @@ $plan = Add-DhSinglePhase -Plan $plan -Name 'Verify env' -Action {
 
 # ── Run it ────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "Derekh Phase G — Manual TUI Smoke Test" -ForegroundColor Cyan
+Write-Host "Guide Phase G — Manual TUI Smoke Test" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Starting TUI in 1 second. Make sure your terminal is at least 80x24." -ForegroundColor DarkGray
 Write-Host "Use the WHAT TO CHECK list at the top of this file to verify." -ForegroundColor DarkGray
 Write-Host ""
 Start-Sleep -Seconds 1
 
-Invoke-DhPlan -Plan $plan
+Invoke-GuidePlan -Plan $plan
 
 # The TUI blocks until the user presses q/Esc/Enter.
 # $LASTEXITCODE reflects the plan result (2 = had hard failures).

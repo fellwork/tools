@@ -2,19 +2,19 @@
 # input.ps1 — Non-blocking key polling and handler registry.
 #
 # Public surface:
-#   Test-DhKeyAvailable          — is a key waiting in the console input buffer?
-#   Read-DhKey                   — read one key (non-echo, non-blocking)
-#   Register-DhKeyHandler        — add a key→scriptblock binding
-#   Unregister-DhKeyHandler      — remove a binding
-#   Get-DhKeyHandlers            — return the full handler table (for testing)
-#   Invoke-DhKeyDispatch         — dispatch one KeyInfo to its handler (if any)
+#   Test-GuideKeyAvailable          — is a key waiting in the console input buffer?
+#   Read-GuideKey                   — read one key (non-echo, non-blocking)
+#   Register-GuideKeyHandler        — add a key→scriptblock binding
+#   Unregister-GuideKeyHandler      — remove a binding
+#   Get-GuideKeyHandlers            — return the full handler table (for testing)
+#   Invoke-GuideKeyDispatch         — dispatch one KeyInfo to its handler (if any)
 #
 # The event loop pattern (used in plan.ps1 F5):
 #
 #   while (-not $shouldQuit) {
-#       if (Test-DhKeyAvailable) {
-#           $key = Read-DhKey
-#           Invoke-DhKeyDispatch $key
+#       if (Test-GuideKeyAvailable) {
+#           $key = Read-GuideKey
+#           Invoke-GuideKeyDispatch $key
 #       }
 #       Start-Sleep -Milliseconds 50
 #   }
@@ -31,7 +31,7 @@ $ErrorActionPreference = 'Stop'
 # e.g. @{ 'Q' = { $script:shouldQuit = $true } }
 $script:_keyHandlers = @{}
 
-function Register-DhKeyHandler {
+function Register-GuideKeyHandler {
     <#
     .SYNOPSIS
         Register a scriptblock to run when a specific key is pressed.
@@ -49,7 +49,7 @@ function Register-DhKeyHandler {
     $script:_keyHandlers[$Key.ToUpperInvariant()] = $Action
 }
 
-function Unregister-DhKeyHandler {
+function Unregister-GuideKeyHandler {
     <#
     .SYNOPSIS
         Remove a key binding from the registry.
@@ -61,7 +61,7 @@ function Unregister-DhKeyHandler {
     $script:_keyHandlers.Remove($Key.ToUpperInvariant())
 }
 
-function Get-DhKeyHandlers {
+function Get-GuideKeyHandlers {
     <#
     .SYNOPSIS
         Return the full handler registry hashtable (primarily for testing).
@@ -71,7 +71,7 @@ function Get-DhKeyHandlers {
     return $script:_keyHandlers.Clone()
 }
 
-function Clear-DhKeyHandlers {
+function Clear-GuideKeyHandlers {
     <#
     .SYNOPSIS
         Remove all registered key handlers (useful for test isolation).
@@ -83,7 +83,7 @@ function Clear-DhKeyHandlers {
 
 # ── Key polling ───────────────────────────────────────────────────────────────
 
-function Test-DhKeyAvailable {
+function Test-GuideKeyAvailable {
     <#
     .SYNOPSIS
         Returns $true if a key is waiting in the console input buffer.
@@ -97,12 +97,12 @@ function Test-DhKeyAvailable {
     try {
         return [Console]::KeyAvailable
     } catch {
-        Write-Verbose "Test-DhKeyAvailable: console input unavailable — $_"
+        Write-Verbose "Test-GuideKeyAvailable: console input unavailable — $_"
         return $false
     }
 }
 
-function Read-DhKey {
+function Read-GuideKey {
     <#
     .SYNOPSIS
         Read one key from the console without echoing it.
@@ -112,7 +112,7 @@ function Read-DhKey {
           .Key         — [ConsoleKey] enum value
           .KeyChar     — char typed
           .Modifiers   — [ConsoleModifiers] (Alt, Shift, Control)
-        IMPORTANT: Only call this after Test-DhKeyAvailable returns $true,
+        IMPORTANT: Only call this after Test-GuideKeyAvailable returns $true,
         otherwise it blocks until a key is pressed.
     #>
     [CmdletBinding()]
@@ -122,7 +122,7 @@ function Read-DhKey {
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 
-function Invoke-DhKeyDispatch {
+function Invoke-GuideKeyDispatch {
     <#
     .SYNOPSIS
         Look up the pressed key in the handler registry and invoke its action.
@@ -133,7 +133,7 @@ function Invoke-DhKeyDispatch {
         If no handler is registered, the key is silently ignored.
         All handler exceptions are caught and written to Verbose.
     .PARAMETER KeyInfo
-        A [ConsoleKeyInfo] returned by Read-DhKey.
+        A [ConsoleKeyInfo] returned by Read-GuideKey.
     #>
     [CmdletBinding()]
     param(
@@ -147,14 +147,14 @@ function Invoke-DhKeyDispatch {
         try {
             & $handler $KeyInfo
         } catch {
-            Write-Verbose "Invoke-DhKeyDispatch: handler for '$keyName' threw — $_"
+            Write-Verbose "Invoke-GuideKeyDispatch: handler for '$keyName' threw — $_"
         }
     }
 }
 
 # ── Phase G: Post-completion interactive mode ─────────────────────────────────
 
-function Enter-DhInteractiveMode {
+function Enter-GuideInteractiveMode {
     <#
     .SYNOPSIS
         Enter post-completion interactive mode after all phases have finished.
@@ -164,7 +164,7 @@ function Enter-DhInteractiveMode {
         3. Registers digit key handlers (1-9) that copy FixCommands to clipboard.
         4. Enters an idle key loop that exits when q/Esc/Enter is pressed.
     .PARAMETER State
-        The DerekhState hashtable.
+        The GuideState hashtable.
     .PARAMETER Theme
         The resolved theme hashtable.
     .PARAMETER Layout
@@ -185,39 +185,39 @@ function Enter-DhInteractiveMode {
     $State.FooterText = '[q] quit  [1-9] copy fix command'
 
     # Re-render issues pane with numeric indices
-    Render-DhIssuesPane -State $State -Theme $Theme -Layout $Layout -ShowIndices
+    Show-GuideIssuesPane -State $State -Theme $Theme -Layout $Layout -ShowIndices
 
     # Update footer
-    Set-DhFooter -Text '[q] quit  [1-9] copy fix command' -Layout $Layout
+    Set-GuideFooter -Text '[q] quit  [1-9] copy fix command' -Layout $Layout
 
     # Register digit key handlers for issues 1-9
     # Use [scriptblock]::Create with string interpolation to force capture-by-value.
-    # $script:DerekhState is set in derekh.psm1 before Invoke-DhPlan enters the TUI path.
+    # $script:GuideState is set in guide.psm1 before Invoke-GuidePlan enters the TUI path.
     for ($n = 1; $n -le 9; $n++) {
         $captured = $n
         $handler = [scriptblock]::Create("
             param(`$keyInfo)
-            `$_st = `$script:DerekhState
+            `$_st = `$script:GuideState
             if (`$null -eq `$_st) { return }
             `$idx = $($captured) - 1
             if (`$idx -ge `$_st.Issues.Count) {
-                Invoke-DhFooterFlash -Message 'No command to copy' ``
+                Invoke-GuideFooterFlash -Message 'No command to copy' ``
                     -State `$_st -Layout `$_st.CurrentLayout
                 return
             }
             `$issue = `$_st.Issues[`$idx]
             if (`$issue.FixCommand) {
-                Set-DhClipboard -Text `$issue.FixCommand | Out-Null
-                Invoke-DhFooterFlash -Message 'Copied to clipboard' ``
+                Set-GuideClipboard -Text `$issue.FixCommand | Out-Null
+                Invoke-GuideFooterFlash -Message 'Copied to clipboard' ``
                     -State `$_st -Layout `$_st.CurrentLayout
             } else {
-                Invoke-DhFooterFlash -Message 'No command to copy' ``
+                Invoke-GuideFooterFlash -Message 'No command to copy' ``
                     -State `$_st -Layout `$_st.CurrentLayout
             }
         ")
-        Register-DhKeyHandler -Key "D$captured" -Action $handler
+        Register-GuideKeyHandler -Key "D$captured" -Action $handler
     }
 
     # The caller's key loop continues with the updated handlers and ShouldQuitRef
-    # — this function just sets up the mode; the main loop in derekh.psm1 does the polling.
+    # — this function just sets up the mode; the main loop in guide.psm1 does the polling.
 }

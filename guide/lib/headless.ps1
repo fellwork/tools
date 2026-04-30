@@ -1,20 +1,20 @@
-# derekh/lib/headless.ps1
-# Headless JSON serializer for Derekh state.
-# Knows about: $DerekhState shape.
+# guide/lib/headless.ps1
+# Headless JSON serializer for Guide state.
+# Knows about: $GuideState shape.
 # Does NOT know about: drawing, ANSI, input, themes.
 #
 # Public:
-#   ConvertTo-DhStateJson -State <hashtable> [-OverrideStartedAt <string>] [-OverrideCompletedAt <string>]
+#   ConvertTo-GuideStateJson -State <hashtable> [-OverrideStartedAt <string>] [-OverrideCompletedAt <string>]
 #     -> [string] JSON
 
-function ConvertTo-DhStateJson {
+function ConvertTo-GuideStateJson {
     <#
     .SYNOPSIS
-        Serializes a $DerekhState hashtable to the v1 headless JSON contract.
+        Serializes a $GuideState hashtable to the v1 headless JSON contract.
 
     .PARAMETER State
-        The $DerekhState hashtable produced by New-DhState and populated by
-        Invoke-DhPlanPhases.
+        The $GuideState hashtable produced by New-GuideState and populated by
+        Invoke-GuidePlanPhases.
 
     .PARAMETER OverrideStartedAt
         ISO 8601 UTC string (e.g. "2026-04-26T12:00:00Z"). When supplied,
@@ -55,7 +55,7 @@ function ConvertTo-DhStateJson {
     # Resolve module version from .psd1 (best-effort; fallback to "0.1.0")
     $version = '0.1.0'
     try {
-        $psd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'derekh.psd1'
+        $psd1 = Join-Path (Split-Path -Parent $PSScriptRoot) 'guide.psd1'
         if (Test-Path $psd1) {
             $manifest = Import-PowerShellDataFile $psd1
             if ($manifest.ModuleVersion) { $version = $manifest.ModuleVersion.ToString() }

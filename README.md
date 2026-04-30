@@ -5,7 +5,7 @@ that other Fellwork repos can `Import-Module` from.
 
 ## Tools
 
-- **[derekh/](derekh/)** — TUI framework for Fellwork CLI tools. Provides a Stardew-themed
+- **[guide/](guide/)** — TUI framework for Fellwork CLI tools. Provides a Stardew-themed
   dashboard, headless JSON mode for agents/CI, and a streaming fallback for non-TTY
   environments. First consumer: `fellwork/bootstrap`.
 
@@ -25,13 +25,13 @@ some-dir/
 Consumer scripts import via the relative sibling path:
 
 ```powershell
-Import-Module "$PSScriptRoot/../tools/derekh/derekh.psd1"
+Import-Module "$PSScriptRoot/../tools/guide/guide.psd1"
 ```
 
 ## Adding a new tool
 
 Each tool is a folder containing a PowerShell module (`.psd1` + `.psm1`) plus its own
-`tests/`. See `derekh/` for the canonical layout.
+`tests/`. See `guide/` for the canonical layout.
 
 ## Tests
 

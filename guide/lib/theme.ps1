@@ -1,32 +1,32 @@
-# derekh/lib/theme.ps1
+# guide/lib/theme.ps1
 # Owns: JSON theme loading, theme cache, color hex→RGB, glyph lookup with ASCII fallback.
 # Does NOT know: what anything is drawn.
 
-$script:_DhThemeCache = @{}
+$script:_GuideThemeCache = @{}
 
-function Get-DhTheme {
+function Get-GuideTheme {
     param(
         [string]$Name  = "twilight",
         [switch]$Force
     )
 
-    if (-not $Force -and $script:_DhThemeCache.ContainsKey($Name)) {
-        return $script:_DhThemeCache[$Name]
+    if (-not $Force -and $script:_GuideThemeCache.ContainsKey($Name)) {
+        return $script:_GuideThemeCache[$Name]
     }
 
     $themePath = Join-Path $PSScriptRoot "../themes/$Name.json"
     if (-not (Test-Path $themePath)) {
-        throw "Derekh theme not found: '$Name' (looked at: $themePath)"
+        throw "Guide theme not found: '$Name' (looked at: $themePath)"
     }
 
     $json  = Get-Content -Path $themePath -Raw -Encoding UTF8
     $theme = $json | ConvertFrom-Json -AsHashtable
 
-    $script:_DhThemeCache[$Name] = $theme
+    $script:_GuideThemeCache[$Name] = $theme
     return $theme
 }
 
-function Get-DhThemeColor {
+function Get-GuideThemeColor {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Theme,
@@ -35,12 +35,12 @@ function Get-DhThemeColor {
     )
 
     if (-not $Theme.palette.ContainsKey($Key)) {
-        throw "Derekh theme palette has no key '$Key'"
+        throw "Guide theme palette has no key '$Key'"
     }
 
     $hex = $Theme.palette[$Key] -replace '^#', ''
     if ($hex.Length -ne 6) {
-        throw "Derekh theme palette '$Key' has invalid hex value: #$hex"
+        throw "Guide theme palette '$Key' has invalid hex value: #$hex"
     }
 
     return @{
@@ -50,7 +50,7 @@ function Get-DhThemeColor {
     }
 }
 
-function Get-DhThemeGlyph {
+function Get-GuideThemeGlyph {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Theme,
@@ -73,10 +73,10 @@ function Get-DhThemeGlyph {
         return $Theme.glyphs[$Key]
     }
 
-    throw "Derekh theme has no glyph key '$Key'"
+    throw "Guide theme has no glyph key '$Key'"
 }
 
-function Test-DhTheme {
+function Test-GuideTheme {
     param(
         [hashtable]$Theme,
         [string]$Name
@@ -84,13 +84,13 @@ function Test-DhTheme {
 
     # If -Name is supplied, load the theme by name and return a simple bool
     if (-not [string]::IsNullOrEmpty($Name)) {
-        $loaded = Get-DhTheme -Name $Name
-        $result = Test-DhTheme -Theme $loaded
+        $loaded = Get-GuideTheme -Name $Name
+        $result = Test-GuideTheme -Theme $loaded
         return $result.Valid
     }
 
     if ($null -eq $Theme) {
-        throw "Test-DhTheme: Either -Theme or -Name must be provided"
+        throw "Test-GuideTheme: Either -Theme or -Name must be provided"
     }
 
     $errors = [System.Collections.ArrayList]@()
@@ -132,14 +132,14 @@ function Test-DhTheme {
     }
 }
 
-function Resolve-DhTheme {
+function Resolve-GuideTheme {
     <#
     .SYNOPSIS
         Resolves the effective theme name from a three-level precedence chain.
     .DESCRIPTION
         Precedence (highest to lowest):
-          1. -CliFlag   (e.g. -Theme passed to Invoke-DhPlan)
-          2. -PlanField (plan.Theme set via New-DhPlan -Theme)
+          1. -CliFlag   (e.g. -Theme passed to Invoke-GuidePlan)
+          2. -PlanField (plan.Theme set via New-GuidePlan -Theme)
           3. -Default   (built-in fallback, defaults to "twilight")
         An empty or whitespace-only value at any level is treated as absent.
     .OUTPUTS
@@ -161,7 +161,7 @@ function Resolve-DhTheme {
     return $Default
 }
 
-function Get-DhAvailableThemes {
+function Get-GuideAvailableThemes {
     <#
     .SYNOPSIS
         Returns the names of all themes discoverable in the themes/ directory.

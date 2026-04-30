@@ -36,17 +36,17 @@ function Skip-Test {
 
 # ── Load module ───────────────────────────────────────────────────────────────
 
-$manifestPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../derekh.psd1'))
+$manifestPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../guide.psd1'))
 Import-Module $manifestPath -Force -ErrorAction Stop
 
 # ── 1. All drawer functions are defined ───────────────────────────────────────
 
 $drawers = @(
-    'Render-DhHeader',
-    'Render-DhPhasesPane',
-    'Render-DhActivePane',
-    'Render-DhIssuesPane',
-    'Render-DhFooter'
+    'Show-GuideHeader',
+    'Show-GuidePhasesPane',
+    'Show-GuideActivePane',
+    'Show-GuideIssuesPane',
+    'Show-GuideFooter'
 )
 
 foreach ($fn in $drawers) {
@@ -57,12 +57,12 @@ foreach ($fn in $drawers) {
 # ── 2. Phase G functions are defined ─────────────────────────────────────────
 
 $phaseGFunctions = @(
-    'Write-DhCentered',
-    'Start-DhResizeWatcher',
-    'Stop-DhResizeWatcher',
-    'Invoke-DhResize',
-    'Set-DhFooter',
-    'Invoke-DhFooterFlash'
+    'Write-GuideCentered',
+    'Start-GuideResizeWatcher',
+    'Stop-GuideResizeWatcher',
+    'Invoke-GuideResize',
+    'Set-GuideFooter',
+    'Invoke-GuideFooterFlash'
 )
 
 foreach ($fn in $phaseGFunctions) {
@@ -73,30 +73,30 @@ foreach ($fn in $phaseGFunctions) {
 # ── 3. SKIP visual-output tests (verified by manual smoke test) ───────────────
 
 $skippedTests = @(
-    'Render-DhHeader draws title on correct row'
-    'Render-DhHeader draws progress bar'
-    'Render-DhPhasesPane draws phase names with status glyphs'
-    'Render-DhPhasesPane truncates long names'
-    'Render-DhActivePane shows spinner and item name'
-    'Render-DhActivePane shows Waiting... when no active item'
-    'Render-DhIssuesPane shows No issues when list is empty'
-    'Render-DhIssuesPane auto-scrolls to latest when count > maxRows'
-    'Render-DhIssuesPane ShowIndices prefixes issues 1-9 with [N]'
-    'Render-DhIssuesPane ShowIndices issue 10+ gets 4-space indent'
-    'Render-DhFooter shows [q] quit hint'
-    '_Draw-DhBox draws correct borders using theme glyphs'
-    'Write-DhCentered renders centered box on screen'
-    'Invoke-DhResize shows too-small message for 40x10'
-    'Invoke-DhResize full re-render for 80x24'
-    'Set-DhFooter updates footer row without full re-render'
-    'Invoke-DhFooterFlash shows message then reverts'
+    'Show-GuideHeader draws title on correct row'
+    'Show-GuideHeader draws progress bar'
+    'Show-GuidePhasesPane draws phase names with status glyphs'
+    'Show-GuidePhasesPane truncates long names'
+    'Show-GuideActivePane shows spinner and item name'
+    'Show-GuideActivePane shows Waiting... when no active item'
+    'Show-GuideIssuesPane shows No issues when list is empty'
+    'Show-GuideIssuesPane auto-scrolls to latest when count > maxRows'
+    'Show-GuideIssuesPane ShowIndices prefixes issues 1-9 with [N]'
+    'Show-GuideIssuesPane ShowIndices issue 10+ gets 4-space indent'
+    'Show-GuideFooter shows [q] quit hint'
+    '_Draw-GuideBox draws correct borders using theme glyphs'
+    'Write-GuideCentered renders centered box on screen'
+    'Invoke-GuideResize shows too-small message for 40x10'
+    'Invoke-GuideResize full re-render for 80x24'
+    'Set-GuideFooter updates footer row without full re-render'
+    'Invoke-GuideFooterFlash shows message then reverts'
 )
 
 foreach ($t in $skippedTests) {
     Skip-Test $t 'visual output — verified by tests/manual-smoke.ps1 (G3)'
 }
 
-# ── 4. Start-DhResizeWatcher / Stop-DhResizeWatcher lifecycle (non-TTY) ───────
+# ── 4. Start-GuideResizeWatcher / Stop-GuideResizeWatcher lifecycle (non-TTY) ───────
 # The watcher uses a background runspace. We can test that it starts and stops
 # cleanly without actually polling [Console]::WindowSize (which may throw in CI).
 
@@ -105,23 +105,23 @@ $isTtyForResize = -not [Console]::IsOutputRedirected
 if ($isTtyForResize) {
     $queue = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
     $handle = $null
-    Assert-NoThrow 'Start-DhResizeWatcher does not throw' {
-        $script:handle = Start-DhResizeWatcher -Queue $queue
+    Assert-NoThrow 'Start-GuideResizeWatcher does not throw' {
+        $script:handle = Start-GuideResizeWatcher -Queue $queue
     }
-    Assert-True 'Start-DhResizeWatcher returns handle with Runspace' `
+    Assert-True 'Start-GuideResizeWatcher returns handle with Runspace' `
         ($null -ne $script:handle -and $null -ne $script:handle.Runspace) `
         'Runspace was null'
-    Assert-True 'Start-DhResizeWatcher returns handle with PowerShell' `
+    Assert-True 'Start-GuideResizeWatcher returns handle with PowerShell' `
         ($null -ne $script:handle -and $null -ne $script:handle.PowerShell) `
         'PowerShell was null'
-    Assert-NoThrow 'Stop-DhResizeWatcher does not throw' {
-        Stop-DhResizeWatcher -Handle $script:handle
+    Assert-NoThrow 'Stop-GuideResizeWatcher does not throw' {
+        Stop-GuideResizeWatcher -Handle $script:handle
     }
 } else {
-    Skip-Test 'Start-DhResizeWatcher does not throw'                'requires TTY — WindowSize unavailable in CI'
-    Skip-Test 'Start-DhResizeWatcher returns handle with Runspace'  'requires TTY'
-    Skip-Test 'Start-DhResizeWatcher returns handle with PowerShell' 'requires TTY'
-    Skip-Test 'Stop-DhResizeWatcher does not throw'                 'requires TTY'
+    Skip-Test 'Start-GuideResizeWatcher does not throw'                'requires TTY — WindowSize unavailable in CI'
+    Skip-Test 'Start-GuideResizeWatcher returns handle with Runspace'  'requires TTY'
+    Skip-Test 'Start-GuideResizeWatcher returns handle with PowerShell' 'requires TTY'
+    Skip-Test 'Stop-GuideResizeWatcher does not throw'                 'requires TTY'
 }
 
 # ── Summary ───────────────────────────────────────────────────────────────────

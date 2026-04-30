@@ -1,7 +1,7 @@
 #Requires -Version 7
 # test-streaming-snapshot.ps1 -- Streaming renderer golden-file snapshot tests.
 #
-# Runs fixed plans through Invoke-DhPlan -NoTui -NoColor, captures Write-Host
+# Runs fixed plans through Invoke-GuidePlan -NoTui -NoColor, captures Write-Host
 # output via stream-6 redirection, normalizes whitespace, and compares to
 # golden files in tests/snapshots/.
 #
@@ -58,13 +58,13 @@ function Compare-Snapshot {
 
 # -- Module setup -------------------------------------------------------------
 
-$manifestPath = Join-Path $PSScriptRoot '../derekh.psd1'
+$manifestPath = Join-Path $PSScriptRoot '../guide.psd1'
 Import-Module ([System.IO.Path]::GetFullPath($manifestPath)) -Force
 
 # Stub animal phrases for determinism.
 # streaming.ps1 checks via Get-Command; defining it here in the session scope
 # makes it visible to the module's internal call.
-function Get-DhAnimalPhrase {
+function Get-GuideAnimalPhrase {
     param([string]$Animal, [string]$Situation)
     return "[$Animal/$Situation]"
 }
@@ -75,9 +75,9 @@ function Invoke-CaptureStreaming {
     param([hashtable]$Plan)
     # Write-Host goes to the Information stream (stream 6).
     # Redirect stream 6 to stdout, then filter to only InformationRecord objects
-    # to discard the integer return value from Invoke-DhPlan.
+    # to discard the integer return value from Invoke-GuidePlan.
     $records = & {
-        Invoke-DhPlan -Plan $Plan -NoTui -NoColor
+        Invoke-GuidePlan -Plan $Plan -NoTui -NoColor
     } 6>&1 | Where-Object { $_ -is [System.Management.Automation.InformationRecord] }
 
     # Each InformationRecord's MessageData is the string passed to Write-Host
@@ -87,14 +87,14 @@ function Invoke-CaptureStreaming {
 
 # -- Case 1: all-success ------------------------------------------------------
 
-$planSuccess = New-DhPlan -Title 'Test Plan' -Subtitle '00:00:00' -Theme 'twilight'
-$planSuccess = Add-DhLoopPhase -Plan $planSuccess -Name 'Clone repos' -Items @('api','web','ops') -Action {
+$planSuccess = New-GuidePlan -Title 'Test Plan' -Subtitle '00:00:00' -Theme 'twilight'
+$planSuccess = Add-GuideLoopPhase -Plan $planSuccess -Name 'Clone repos' -Items @('api','web','ops') -Action {
     param($item)
-    return New-DhResult -Success $true -Message "$item cloned"
+    return New-GuideResult -Success $true -Message "$item cloned"
 }
-$planSuccess = Add-DhLoopPhase -Plan $planSuccess -Name 'Proto install' -Items @('api','web','ops') -Action {
+$planSuccess = Add-GuideLoopPhase -Plan $planSuccess -Name 'Proto install' -Items @('api','web','ops') -Action {
     param($item)
-    return New-DhResult -Success $true -Message "$item tools installed"
+    return New-GuideResult -Success $true -Message "$item tools installed"
 }
 
 $out1 = Invoke-CaptureStreaming -Plan $planSuccess
@@ -102,10 +102,10 @@ Compare-Snapshot -Name 'streaming-all-success' -Actual $out1
 
 # -- Case 2: all-fail ---------------------------------------------------------
 
-$planFail = New-DhPlan -Title 'Test Plan' -Subtitle '00:00:00' -Theme 'twilight'
-$planFail = Add-DhLoopPhase -Plan $planFail -Name 'Clone repos' -Items @('api','web') -Action {
+$planFail = New-GuidePlan -Title 'Test Plan' -Subtitle '00:00:00' -Theme 'twilight'
+$planFail = Add-GuideLoopPhase -Plan $planFail -Name 'Clone repos' -Items @('api','web') -Action {
     param($item)
-    return New-DhResult -Success $false -Message "clone failed (exit 128)" `
+    return New-GuideResult -Success $false -Message "clone failed (exit 128)" `
         -FixCommand "git clone https://github.com/fellwork/$item.git" `
         -Animal 'octopus'
 }
@@ -115,22 +115,22 @@ Compare-Snapshot -Name 'streaming-all-fail' -Actual $out2
 
 # -- Case 3: mixed with alerts ------------------------------------------------
 
-$planMixed = New-DhPlan -Title 'Test Plan' -Subtitle '00:00:00' -Theme 'twilight'
-$planMixed = Add-DhLoopPhase -Plan $planMixed -Name 'Clone repos' -Items @('api','web','ops') -Action {
+$planMixed = New-GuidePlan -Title 'Test Plan' -Subtitle '00:00:00' -Theme 'twilight'
+$planMixed = Add-GuideLoopPhase -Plan $planMixed -Name 'Clone repos' -Items @('api','web','ops') -Action {
     param($item)
     if ($item -eq 'ops') {
-        return New-DhResult -Success $false -Message "clone failed" `
+        return New-GuideResult -Success $false -Message "clone failed" `
             -FixCommand "git clone https://github.com/fellwork/ops.git" `
             -Animal 'raccoon'
     }
-    return New-DhResult -Success $true -Message "$item cloned"
+    return New-GuideResult -Success $true -Message "$item cloned"
 }
-$planMixed = Add-DhSinglePhase -Plan $planMixed -Name 'Other prereqs' -Action {
+$planMixed = Add-GuideSinglePhase -Plan $planMixed -Name 'Other prereqs' -Action {
     $alerts = @(
-        (New-DhAlert -Severity 'warning' -Message 'wrangler is not installed' `
+        (New-GuideAlert -Severity 'warning' -Message 'wrangler is not installed' `
             -FixCommand 'npm install -g wrangler')
     )
-    return New-DhResult -Success $true -Alerts $alerts
+    return New-GuideResult -Success $true -Alerts $alerts
 }
 
 $out3 = Invoke-CaptureStreaming -Plan $planMixed

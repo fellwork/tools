@@ -1,10 +1,10 @@
-# derekh/lib/plan.ps1
+# guide/lib/plan.ps1
 # Owns: plan validation, loop/single dispatch, action invocation, result normalization.
 # Does NOT know: how state is rendered.
 
 # ── Private helpers ──────────────────────────────────────────────────────────
 
-function _Get-DhDefaultAnimal {
+function _Get-GuideDefaultAnimal {
     param([string]$Severity)
     switch ($Severity) {
         "fail"    { return "raccoon" }
@@ -14,7 +14,7 @@ function _Get-DhDefaultAnimal {
     }
 }
 
-function _Normalize-DhResult {
+function _Normalize-GuideResult {
     param([hashtable]$Result, [bool]$WasThrow = $false)
 
     # Ensure Success field
@@ -27,7 +27,7 @@ function _Normalize-DhResult {
 
     # Default Animal from Severity (treat empty string same as absent/null)
     if (-not $Result.ContainsKey('Animal') -or $null -eq $Result.Animal -or [string]::IsNullOrEmpty($Result.Animal)) {
-        $Result.Animal = _Get-DhDefaultAnimal -Severity $Result.Severity
+        $Result.Animal = _Get-GuideDefaultAnimal -Severity $Result.Severity
     }
 
     # Ensure optional fields exist
@@ -42,7 +42,7 @@ function _Normalize-DhResult {
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
-function New-DhPlan {
+function New-GuidePlan {
     param(
         [Parameter(Mandatory)]
         [string]$Title,
@@ -57,7 +57,7 @@ function New-DhPlan {
     }
 }
 
-function Add-DhLoopPhase {
+function Add-GuideLoopPhase {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Plan,
@@ -77,7 +77,7 @@ function Add-DhLoopPhase {
     return $Plan
 }
 
-function Add-DhSinglePhase {
+function Add-GuideSinglePhase {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Plan,
@@ -94,7 +94,7 @@ function Add-DhSinglePhase {
     return $Plan
 }
 
-function New-DhResult {
+function New-GuideResult {
     param(
         [Parameter(Mandatory)]
         [bool]$Success,
@@ -124,7 +124,7 @@ function New-DhResult {
     return $r
 }
 
-function New-DhAlert {
+function New-GuideAlert {
     param(
         [Parameter(Mandatory)]
         [ValidateSet("info","warning","fail")]
@@ -140,7 +140,7 @@ function New-DhAlert {
     }
 }
 
-function Test-DhPlan {
+function Test-GuidePlan {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Plan
@@ -177,7 +177,7 @@ function Test-DhPlan {
     }
 }
 
-function Invoke-DhPlanPhases {
+function Invoke-GuidePlanPhases {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Plan,
@@ -188,13 +188,13 @@ function Invoke-DhPlanPhases {
     foreach ($planPhase in $Plan.Phases) {
         # Find corresponding state phase by name
         $statePhase = $State.Phases | Where-Object { $_.Name -eq $planPhase.Name } | Select-Object -First 1
-        Set-DhStatePhaseStatus -State $State -PhaseName $planPhase.Name -Status "running"
+        Set-GuideStatePhaseStatus -State $State -PhaseName $planPhase.Name -Status "running"
 
         $phaseHadFail = $false
 
         if ($planPhase.Type -eq "loop") {
             foreach ($item in $planPhase.Items) {
-                Set-DhStateActive -State $State -Label $item.ToString()
+                Set-GuideStateActive -State $State -Label $item.ToString()
 
                 $result = $null
                 try {
@@ -202,9 +202,9 @@ function Invoke-DhPlanPhases {
                     if ($null -eq $result -or $result -isnot [hashtable]) {
                         $result = @{ Success = $true; Message = $item.ToString() }
                     }
-                    $result = _Normalize-DhResult -Result $result
+                    $result = _Normalize-GuideResult -Result $result
                 } catch {
-                    $result = _Normalize-DhResult -Result @{
+                    $result = _Normalize-GuideResult -Result @{
                         Success  = $false
                         Message  = $_.Exception.Message
                         Severity = "fail"
@@ -216,11 +216,11 @@ function Invoke-DhPlanPhases {
                 $itemStatus = if ($result.Success) { "ok" } else {
                     if ($result.Severity -eq "warning") { "warn" } else { "fail" }
                 }
-                Add-DhStatePhaseItem -State $State -PhaseName $planPhase.Name -ItemName $item.ToString() -Status $itemStatus -Message $result.Message
+                Add-GuideStatePhaseItem -State $State -PhaseName $planPhase.Name -ItemName $item.ToString() -Status $itemStatus -Message $result.Message
 
                 if (-not $result.Success) {
                     $phaseHadFail = $true
-                    Add-DhStateIssue -State $State -Phase $planPhase.Name -Severity $result.Severity `
+                    Add-GuideStateIssue -State $State -Phase $planPhase.Name -Severity $result.Severity `
                         -Message $result.Message -FixCommand $result.FixCommand `
                         -Animal $result.Animal -LogTail $result.LogTail
                 }
@@ -228,22 +228,22 @@ function Invoke-DhPlanPhases {
                 # Surface any alerts from loop items
                 if ($result.Alerts -and $result.Alerts.Count -gt 0) {
                     foreach ($alert in $result.Alerts) {
-                        Add-DhStateIssue -State $State -Phase $planPhase.Name -Severity $alert.Severity `
+                        Add-GuideStateIssue -State $State -Phase $planPhase.Name -Severity $alert.Severity `
                             -Message $alert.Message -FixCommand $alert.FixCommand
                     }
                 }
             }
 
-            Set-DhStateActive -State $State -Label ""
+            Set-GuideStateActive -State $State -Label ""
             $phaseStatus = if ($phaseHadFail) {
                 # Check if ALL items failed or just some
                 $okCount = ($statePhase.Items | Where-Object { $_.Status -eq "ok" }).Count
                 if ($okCount -gt 0) { "warn" } else { "fail" }
             } else { "ok" }
-            Set-DhStatePhaseStatus -State $State -PhaseName $planPhase.Name -Status $phaseStatus
+            Set-GuideStatePhaseStatus -State $State -PhaseName $planPhase.Name -Status $phaseStatus
 
         } elseif ($planPhase.Type -eq "single") {
-            Set-DhStateActive -State $State -Label $planPhase.Name
+            Set-GuideStateActive -State $State -Label $planPhase.Name
 
             $result = $null
             try {
@@ -251,9 +251,9 @@ function Invoke-DhPlanPhases {
                 if ($null -eq $result -or $result -isnot [hashtable]) {
                     $result = @{ Success = $true; Message = $planPhase.Name }
                 }
-                $result = _Normalize-DhResult -Result $result
+                $result = _Normalize-GuideResult -Result $result
             } catch {
-                $result = _Normalize-DhResult -Result @{
+                $result = _Normalize-GuideResult -Result @{
                     Success  = $false
                     Message  = $_.Exception.Message
                     Severity = "fail"
@@ -262,11 +262,11 @@ function Invoke-DhPlanPhases {
                 }
             }
 
-            Set-DhStateActive -State $State -Label ""
+            Set-GuideStateActive -State $State -Label ""
 
             if (-not $result.Success) {
                 $phaseHadFail = $true
-                Add-DhStateIssue -State $State -Phase $planPhase.Name -Severity $result.Severity `
+                Add-GuideStateIssue -State $State -Phase $planPhase.Name -Severity $result.Severity `
                     -Message $result.Message -FixCommand $result.FixCommand `
                     -Animal $result.Animal -LogTail $result.LogTail
             }
@@ -274,13 +274,13 @@ function Invoke-DhPlanPhases {
             # Surface alerts even on success
             if ($result.Alerts -and $result.Alerts.Count -gt 0) {
                 foreach ($alert in $result.Alerts) {
-                    Add-DhStateIssue -State $State -Phase $planPhase.Name -Severity $alert.Severity `
+                    Add-GuideStateIssue -State $State -Phase $planPhase.Name -Severity $alert.Severity `
                         -Message $alert.Message -FixCommand $alert.FixCommand
                 }
             }
 
             $phaseStatus = if ($phaseHadFail) { "fail" } else { "ok" }
-            Set-DhStatePhaseStatus -State $State -PhaseName $planPhase.Name -Status $phaseStatus
+            Set-GuideStatePhaseStatus -State $State -PhaseName $planPhase.Name -Status $phaseStatus
         }
     }
 

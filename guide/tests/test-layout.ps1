@@ -1,4 +1,4 @@
-# derekh/tests/test-layout.ps1
+# guide/tests/test-layout.ps1
 . "$PSScriptRoot/../lib/theme.ps1"
 . "$PSScriptRoot/../lib/layout.ps1"
 
@@ -20,19 +20,19 @@ function Assert-True($condition, $message) {
     }
 }
 
-$theme = Get-DhTheme -Name "twilight"
+$theme = Get-GuideTheme -Name "twilight"
 
-# --- Test-DhLayoutFits ---
-Assert-Equal $true  (Test-DhLayoutFits -Width 60  -Height 15) "60x15 fits (minimum)"
-Assert-Equal $true  (Test-DhLayoutFits -Width 120 -Height 30) "120x30 fits"
-Assert-Equal $false (Test-DhLayoutFits -Width 59  -Height 15) "59x15 too narrow"
-Assert-Equal $false (Test-DhLayoutFits -Width 60  -Height 14) "60x14 too short"
-Assert-Equal $false (Test-DhLayoutFits -Width 40  -Height 10) "40x10 too small"
-Assert-Equal $false (Test-DhLayoutFits -Width 0   -Height 0 ) "0x0 does not fit"
+# --- Test-GuideLayoutFits ---
+Assert-Equal $true  (Test-GuideLayoutFits -Width 60  -Height 10) "60x10 fits (minimum)"
+Assert-Equal $true  (Test-GuideLayoutFits -Width 120 -Height 30) "120x30 fits"
+Assert-Equal $false (Test-GuideLayoutFits -Width 59  -Height 10) "59x10 too narrow"
+Assert-Equal $false (Test-GuideLayoutFits -Width 60  -Height 9 ) "60x9 too short"
+Assert-Equal $false (Test-GuideLayoutFits -Width 40  -Height 8 ) "40x8 too small"
+Assert-Equal $false (Test-GuideLayoutFits -Width 0   -Height 0 ) "0x0 does not fit"
 
-# --- Get-DhLayout: returns hashtable with 5 keys ---
-$layout = Get-DhLayout -Width 120 -Height 40 -Theme $theme
-Assert-True ($layout -is [hashtable]) "Get-DhLayout returns hashtable"
+# --- Get-GuideLayout: returns hashtable with 5 keys ---
+$layout = Get-GuideLayout -Width 120 -Height 40 -Theme $theme
+Assert-True ($layout -is [hashtable]) "Get-GuideLayout returns hashtable"
 foreach ($region in @('Header','PhasesPane','ActivePane','IssuesPane','Footer')) {
     Assert-True ($layout.ContainsKey($region)) "Layout has key: $region"
 }
@@ -96,7 +96,7 @@ $totalRight = $ap.Height + $ip.Height
 Assert-Equal 38 $totalRight "ActivePane + IssuesPane = H - 2 rows"
 
 # --- Minimum terminal (60x15) — layout still valid ---
-$minLayout = Get-DhLayout -Width 60 -Height 15 -Theme $theme
+$minLayout = Get-GuideLayout -Width 60 -Height 15 -Theme $theme
 Assert-True ($minLayout -is [hashtable]) "60x15 layout returns hashtable"
 Assert-Equal 60 $minLayout.Header.Width "60x15 Header.Width = 60"
 Assert-Equal 15 $minLayout.Footer.Y "60x15 Footer.Y = 15"
@@ -113,11 +113,11 @@ Assert-True ($minRightWidth -ge 1) "60x15 right pane has at least 1 column"
 Assert-True ($minLayout.ActivePane.Height -ge 3) "60x15 ActivePane.Height >= 3"
 
 # --- PhasesPane width clamping: very wide terminal uses max_width ---
-$wideLayout = Get-DhLayout -Width 200 -Height 50 -Theme $theme
+$wideLayout = Get-GuideLayout -Width 200 -Height 50 -Theme $theme
 Assert-Equal 32 $wideLayout.PhasesPane.Width "200-wide terminal uses max_width = 32"
 
 # --- PhasesPane width clamping: narrow terminal uses min_width ---
-$narrowLayout = Get-DhLayout -Width 60 -Height 20 -Theme $theme
+$narrowLayout = Get-GuideLayout -Width 60 -Height 20 -Theme $theme
 Assert-Equal 24 $narrowLayout.PhasesPane.Width "60-wide terminal uses min_width = 24"
 
 # --- No overlapping regions ---

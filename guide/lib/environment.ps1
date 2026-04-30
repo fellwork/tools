@@ -1,13 +1,13 @@
 #Requires -Version 7
 # environment.ps1 — Terminal capability detection.
 #
-# Test-DhEnvironment returns a hashtable describing whether the current
+# Test-GuideEnvironment returns a hashtable describing whether the current
 # terminal is capable of hosting the TUI: IsTty, IsUtf8, HasColor, Fits,
 # Width, Height.
 
 $ErrorActionPreference = 'Stop'
 
-function Test-DhEnvironment {
+function Test-GuideEnvironment {
     <#
     .SYNOPSIS
         Probe the current terminal for TUI capability.
@@ -42,12 +42,18 @@ function Test-DhEnvironment {
 
     $w = 0; $h = 0
     try {
-        $size = $Host.UI.RawUI.WindowSize
-        $w = $size.Width
-        $h = $size.Height
+        $w = [Console]::WindowWidth
+        $h = [Console]::WindowHeight
     } catch { }
+    if ($w -le 0 -or $h -le 0) {
+        try {
+            $size = $Host.UI.RawUI.WindowSize
+            $w = $size.Width
+            $h = $size.Height
+        } catch { }
+    }
 
-    $fits = ($w -ge 60 -and $h -ge 15)
+    $fits = ($w -ge 60 -and $h -ge 10)
 
     return @{
         IsTty    = $isTty
