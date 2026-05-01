@@ -49,3 +49,17 @@ Do not introduce a third rendering path.
 The Bun server binds to `127.0.0.1`. Never introduce a flag or code path that
 binds to `0.0.0.0` or any external interface. Multi-user access is out of
 scope; same-user trust is the security boundary.
+
+## gstack
+
+AI dev tooling — headless browser, QA, design review, deploy workflows.
+
+**Install (one-time per machine):**
+```bash
+git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup
+```
+
+Use `/browse` for all web browsing. Never use `mcp__claude-in-chrome__*` tools directly.
+
+Available skills:
+`/office-hours`, `/plan-ceo-review`, `/plan-eng-review`, `/plan-design-review`, `/design-consultation`, `/design-shotgun`, `/design-html`, `/review`, `/ship`, `/land-and-deploy`, `/canary`, `/benchmark`, `/browse`, `/connect-chrome`, `/qa`, `/qa-only`, `/design-review`, `/setup-browser-cookies`, `/setup-deploy`, `/setup-gbrain`, `/retro`, `/investigate`, `/document-release`, `/codex`, `/cso`, `/autoplan`, `/plan-devex-review`, `/devex-review`, `/careful`, `/freeze`, `/guard`, `/unfreeze`, `/gstack-upgrade`, `/learn`

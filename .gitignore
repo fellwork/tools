@@ -12,3 +12,4 @@ Thumbs.db
 
 # PowerShell module test artifacts
 **/tests/snapshots/*.actual.txt
+AGENTS.local.db
